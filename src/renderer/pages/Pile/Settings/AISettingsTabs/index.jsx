@@ -1,56 +1,97 @@
-import React, { useEffect, useState } from 'react';
+/* eslint-disable jsx-a11y/label-has-associated-control */
 import * as Tabs from '@radix-ui/react-tabs';
-import styles from './AISettingTabs.module.scss';
+import { useCallback, useEffect, useState } from 'react';
 import { useAIContext } from 'renderer/context/AIContext';
-import {
-  usePilesContext,
-  availableThemes,
-} from 'renderer/context/PilesContext';
-import { CardIcon, OllamaIcon, BoxOpenIcon } from 'renderer/icons';
-import { useIndexContext } from 'renderer/context/IndexContext';
+import { BoxOpenIcon, CardIcon, GeminiIcon, OllamaIcon } from 'renderer/icons';
+import PropTypes from 'prop-types';
+import styles from './AISettingTabs.module.scss';
 
 export default function AISettingTabs({ APIkey, setCurrentKey }) {
   const {
-    prompt,
-    setPrompt,
-    updateSettings,
     setBaseUrl,
-    getKey,
-    setKey,
-    deleteKey,
     model,
     setModel,
     embeddingModel,
     setEmbeddingModel,
-    ollama,
     baseUrl,
     pileAIProvider,
     setPileAIProvider,
   } = useAIContext();
+  // Local state for inputs with debounced updates
+  const [localModel, setLocalModel] = useState(model);
+  const [localEmbeddingModel, setLocalEmbeddingModel] =
+    useState(embeddingModel);
+  const [localBaseUrl, setLocalBaseUrl] = useState(baseUrl);
 
-  const { currentTheme, setTheme } = usePilesContext();
+  // Debounce timers
+  const [modelTimer, setModelTimer] = useState(null);
+  const [embeddingTimer, setEmbeddingTimer] = useState(null);
+  const [baseUrlTimer, setBaseUrlTimer] = useState(null);
+
+  // Update local state when context values change (e.g., switching tabs)
+  useEffect(() => {
+    setLocalModel(model);
+  }, [model]);
+
+  useEffect(() => {
+    setLocalEmbeddingModel(embeddingModel);
+  }, [embeddingModel]);
+
+  useEffect(() => {
+    setLocalBaseUrl(baseUrl);
+  }, [baseUrl]);
+
+  // Debounced update functions
+  const debouncedSetModel = useCallback(
+    (value) => {
+      if (modelTimer) clearTimeout(modelTimer);
+      const timer = setTimeout(() => setModel(value), 800);
+      setModelTimer(timer);
+    },
+    [modelTimer, setModel],
+  );
+
+  const debouncedSetEmbeddingModel = useCallback(
+    (value) => {
+      if (embeddingTimer) clearTimeout(embeddingTimer);
+      const timer = setTimeout(() => setEmbeddingModel(value), 800);
+      setEmbeddingTimer(timer);
+    },
+    [embeddingTimer, setEmbeddingModel],
+  );
+
+  const debouncedSetBaseUrl = useCallback(
+    (value) => {
+      if (baseUrlTimer) clearTimeout(baseUrlTimer);
+      const timer = setTimeout(() => setBaseUrl(value), 800);
+      setBaseUrlTimer(timer);
+    },
+    [baseUrlTimer, setBaseUrl],
+  );
 
   const handleTabChange = (newValue) => {
+    // Immediately commit any pending changes when switching tabs
+    if (modelTimer) {
+      clearTimeout(modelTimer);
+      setModel(localModel);
+    }
+    if (embeddingTimer) {
+      clearTimeout(embeddingTimer);
+      setEmbeddingModel(localEmbeddingModel);
+    }
+    if (baseUrlTimer) {
+      clearTimeout(baseUrlTimer);
+      setBaseUrl(localBaseUrl);
+    }
     setPileAIProvider(newValue);
   };
 
-  const handleInputChange = (setter) => (e) => setter(e.target.value);
-
-  const renderThemes = () => {
-    return Object.entries(availableThemes).map(([theme, colors]) => (
-      <button
-        key={`theme-${theme}`}
-        className={`${styles.theme} ${
-          currentTheme === theme ? styles.current : ''
-        }`}
-        onClick={() => setTheme(theme)}
-      >
-        <div
-          className={styles.color1}
-          style={{ background: colors.primary }}
-        ></div>
-      </button>
-    ));
+  const handleInputChange = (setter, debouncedSetter) => (e) => {
+    const { value } = e.target;
+    setter(value);
+    if (debouncedSetter) {
+      debouncedSetter(value);
+    }
   };
 
   return (
@@ -61,32 +102,21 @@ export default function AISettingTabs({ APIkey, setCurrentKey }) {
       onValueChange={handleTabChange}
     >
       <Tabs.List className={styles.tabsList} aria-label="Manage your account">
-        <Tabs.Trigger
-          className={`${styles.tabsTrigger} ${
-            pileAIProvider === 'ollama' ? styles.activeCenter : ''
-          } ${pileAIProvider === 'openai' ? styles.activeRight : ''}`}
-          value="subscription"
-        >
+        <Tabs.Trigger className={styles.tabsTrigger} value="subscription">
           Subscription
           <CardIcon className={styles.icon} />
         </Tabs.Trigger>
-        <Tabs.Trigger
-          className={`${styles.tabsTrigger} ${
-            pileAIProvider === 'subscription' ? styles.activeLeft : ''
-          } ${pileAIProvider === 'openai' ? styles.activeRight : ''}`}
-          value="ollama"
-        >
+        <Tabs.Trigger className={styles.tabsTrigger} value="ollama">
           Ollama API
           <OllamaIcon className={styles.icon} />
         </Tabs.Trigger>
-        <Tabs.Trigger
-          className={`${styles.tabsTrigger} ${
-            pileAIProvider === 'ollama' ? styles.activeCenter : ''
-          }`}
-          value="openai"
-        >
+        <Tabs.Trigger className={styles.tabsTrigger} value="openai">
           OpenAI API
           <BoxOpenIcon className={styles.icon} />
+        </Tabs.Trigger>
+        <Tabs.Trigger className={styles.tabsTrigger} value="gemini">
+          Gemini API
+          <GeminiIcon className={styles.icon} />
         </Tabs.Trigger>
       </Tabs.List>
 
@@ -107,7 +137,7 @@ export default function AISettingTabs({ APIkey, setCurrentKey }) {
             </div>
             <div className={styles.disclaimer}>
               AI subscription for Pile is provided separately by{' '}
-              <a href="https://un.ms" target="_blank">
+              <a href="https://un.ms" target="_blank" rel="noopener noreferrer">
                 UNMS
               </a>
               . Subject to availability and capacity limits. Fair-use policy
@@ -132,9 +162,8 @@ export default function AISettingTabs({ APIkey, setCurrentKey }) {
               <input
                 id="ollama-model"
                 className={styles.input}
-                onChange={handleInputChange(setModel)}
-                value={model}
-                defaultValue="llama3.1:70b"
+                onChange={handleInputChange(setLocalModel, debouncedSetModel)}
+                value={localModel}
                 placeholder="llama3.1:70b"
               />
             </fieldset>
@@ -145,11 +174,12 @@ export default function AISettingTabs({ APIkey, setCurrentKey }) {
               <input
                 id="ollama-embedding-model"
                 className={styles.input}
-                onChange={handleInputChange(setEmbeddingModel)}
-                value={embeddingModel}
-                defaultValue="mxbai-embed-large"
+                onChange={handleInputChange(
+                  setLocalEmbeddingModel,
+                  debouncedSetEmbeddingModel,
+                )}
+                value={localEmbeddingModel}
                 placeholder="mxbai-embed-large"
-                disabled
               />
             </fieldset>
           </div>
@@ -158,7 +188,11 @@ export default function AISettingTabs({ APIkey, setCurrentKey }) {
             Ollama is the easiest way to run AI models on your own computer.
             Remember to pull your models in Ollama before using them in Pile.
             Learn more and download Ollama from{' '}
-            <a href="https://ollama.com" target="_blank">
+            <a
+              href="https://ollama.com"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
               ollama.com
             </a>
             .
@@ -181,8 +215,11 @@ export default function AISettingTabs({ APIkey, setCurrentKey }) {
               <input
                 id="openai-base-url"
                 className={styles.input}
-                onChange={handleInputChange(setBaseUrl)}
-                value={baseUrl}
+                onChange={handleInputChange(
+                  setLocalBaseUrl,
+                  debouncedSetBaseUrl,
+                )}
+                value={localBaseUrl}
                 placeholder="https://api.openai.com/v1"
               />
             </fieldset>
@@ -193,24 +230,51 @@ export default function AISettingTabs({ APIkey, setCurrentKey }) {
               <input
                 id="openai-model"
                 className={styles.input}
-                onChange={handleInputChange(setModel)}
-                value={model}
+                onChange={handleInputChange(setLocalModel, debouncedSetModel)}
+                value={localModel}
                 placeholder="gpt-4o"
               />
             </fieldset>
           </div>
-          <fieldset className={styles.fieldset}>
-            <label className={styles.label} htmlFor="openai-api-key">
-              OpenAI API key
-            </label>
-            <input
-              id="openai-api-key"
-              className={styles.input}
-              onChange={handleInputChange(setCurrentKey)}
-              value={APIkey}
-              placeholder="Paste an OpenAI API key to enable AI reflections"
-            />
-          </fieldset>
+          <div className={styles.disclaimer}>
+            Remember to manage your spend by setting up a budget in the API
+            service you choose to use.
+          </div>
+        </div>
+      </Tabs.Content>
+
+      <Tabs.Content className={styles.tabsContent} value="gemini">
+        <div className={styles.providers}>
+          <div className={styles.pitch}>
+            Create an API key in Google AI Studio and paste it here to start
+            using Gemini AI models in Pile.
+          </div>
+          <div className={styles.group}>
+            <fieldset className={styles.fieldset}>
+              <label className={styles.label} htmlFor="gemini-model">
+                Model
+              </label>
+              <input
+                id="gemini-model"
+                className={styles.input}
+                onChange={handleInputChange(setLocalModel, debouncedSetModel)}
+                value={localModel}
+                placeholder="gemini-2.5-flash"
+              />
+            </fieldset>
+            <fieldset className={styles.fieldset}>
+              <label className={styles.label} htmlFor="gemini-api-key">
+                Gemini API key
+              </label>
+              <input
+                id="gemini-api-key"
+                className={styles.input}
+                onChange={handleInputChange(setCurrentKey)}
+                value={APIkey}
+                placeholder="Paste a Gemini API key to enable AI reflections"
+              />
+            </fieldset>
+          </div>
           <div className={styles.disclaimer}>
             Remember to manage your spend by setting up a budget in the API
             service you choose to use.
@@ -220,3 +284,8 @@ export default function AISettingTabs({ APIkey, setCurrentKey }) {
     </Tabs.Root>
   );
 }
+
+AISettingTabs.propTypes = {
+  APIkey: PropTypes.string.isRequired,
+  setCurrentKey: PropTypes.func.isRequired,
+};
