@@ -107,15 +107,15 @@ export default function AISettingTabs({ APIkey, setCurrentKey }) {
           <CardIcon className={styles.icon} />
         </Tabs.Trigger>
         <Tabs.Trigger className={styles.tabsTrigger} value="ollama">
-          Ollama API
+          Ollama
           <OllamaIcon className={styles.icon} />
         </Tabs.Trigger>
         <Tabs.Trigger className={styles.tabsTrigger} value="openai">
-          OpenAI API
+          OpenAI
           <BoxOpenIcon className={styles.icon} />
         </Tabs.Trigger>
         <Tabs.Trigger className={styles.tabsTrigger} value="gemini">
-          Gemini API
+          Gemini
           <GeminiIcon className={styles.icon} />
         </Tabs.Trigger>
       </Tabs.List>
@@ -236,6 +236,18 @@ export default function AISettingTabs({ APIkey, setCurrentKey }) {
               />
             </fieldset>
           </div>
+          <fieldset className={styles.fieldset}>
+            <label className={styles.label} htmlFor="openai-api-key">
+              OpenAI API key
+            </label>
+            <input
+              id="openai-api-key"
+              className={styles.input}
+              onChange={setCurrentKey}
+              value={APIkey}
+              placeholder="Paste an OpenAI API key to enable AI reflections"
+            />
+          </fieldset>
           <div className={styles.disclaimer}>
             Remember to manage your spend by setting up a budget in the API
             service you choose to use.
@@ -259,7 +271,7 @@ export default function AISettingTabs({ APIkey, setCurrentKey }) {
                 className={styles.input}
                 onChange={handleInputChange(setLocalModel, debouncedSetModel)}
                 value={localModel}
-                placeholder="gemini-2.5-flash"
+                placeholder="gemini-2.0-flash"
               />
             </fieldset>
             <fieldset className={styles.fieldset}>

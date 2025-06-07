@@ -36,7 +36,7 @@ const getProviderBaseUrl = (provider) => {
 
 const getDefaultModel = (provider) => {
   if (provider === 'openai') return 'gpt-4o';
-  if (provider === 'gemini') return 'gemini-2.5-flash';
+  if (provider === 'gemini') return 'gemini-2.0-flash';
   if (provider === 'ollama') return 'llama3'; // Or any default
   return 'gpt-4o';
 };
@@ -60,15 +60,41 @@ export function AIContextProvider({ children }) {
     'mxbai-embed-large',
   );
   const [baseUrl, setBaseUrl] = useElectronStore('baseUrl', OPENAI_URL);
-  const previousProviderRef = useRef(pileAIProvider);
+  const previousProviderRef = useRef(null);
+  const [isInitialized, setIsInitialized] = useState(false); // Add isInitialized state
 
   const getAvailableModels = useCallback(() => {
     if (pileAIProvider === 'gemini') {
-      return ['gemini-2.5-flash', 'gemini-2.0-pro', 'gemini-2.0-flash'];
+      return [
+        'gemini-2.5-pro-preview-06-05',
+        'gemini-2.5-flash-preview-05-20',
+        'gemini-2.0-flash',
+        'gemini-2.0-flash-lite',
+      ];
     }
     // Add other providers if they have a fixed list of models
     return []; // Return empty for openai and ollama where models can be custom
   }, [pileAIProvider]);
+
+  const isModelMatchingProvider = useCallback((modelToCheck, provider) => {
+    return (
+      (provider === 'gemini' && modelToCheck.startsWith('gemini-')) ||
+      (provider === 'openai' &&
+        (modelToCheck.startsWith('gpt-') || modelToCheck.startsWith('o1-'))) ||
+      (provider === 'ollama' &&
+        !modelToCheck.startsWith('gemini-') &&
+        !modelToCheck.startsWith('gpt-') &&
+        !modelToCheck.startsWith('o1-'))
+    );
+  }, []);
+
+  // Initialize after both provider and model are loaded
+  useEffect(() => {
+    if (!isInitialized && pileAIProvider && model) {
+      setIsInitialized(true);
+      previousProviderRef.current = pileAIProvider;
+    }
+  }, [pileAIProvider, model, isInitialized]);
 
   useEffect(() => {
     const newBaseUrl = getProviderBaseUrl(pileAIProvider);
@@ -76,12 +102,22 @@ export function AIContextProvider({ children }) {
       setBaseUrl(newBaseUrl);
     }
 
-    // Only set default model when provider actually changes
-    if (previousProviderRef.current !== pileAIProvider) {
-      setModel(getDefaultModel(pileAIProvider));
+    // Only change model when provider changes after initialization
+    if (isInitialized && previousProviderRef.current !== pileAIProvider) {
+      // If the current model doesn't match the new provider, set the default model
+      if (!isModelMatchingProvider(model, pileAIProvider)) {
+        setModel(getDefaultModel(pileAIProvider));
+      }
       previousProviderRef.current = pileAIProvider;
     }
-  }, [pileAIProvider, setBaseUrl, setModel]);
+  }, [
+    pileAIProvider,
+    model,
+    isInitialized,
+    setBaseUrl,
+    setModel,
+    isModelMatchingProvider,
+  ]);
 
   const setupAi = useCallback(async () => {
     const key = await window.electron.ipc.invoke('get-ai-key');
@@ -95,10 +131,6 @@ export function AIContextProvider({ children }) {
     if (currentPile) {
       // console.log('🧠 Syncing current pile');
       if (currentPile.AIPrompt) {
-        // console.log(
-        //   '📝 Loading prompt from pile:',
-        //   currentPile.AIPrompt.substring(0, 100) + '...',
-        // );
         setPrompt(currentPile.AIPrompt);
       }
       setupAi();
@@ -161,6 +193,16 @@ export function AIContextProvider({ children }) {
       } catch (error) {
         // eslint-disable-next-line no-console
         console.error('AI request failed:', error);
+        // Make sure to clean up any pending listeners
+        const chunkChannel = `ai-stream-chunk-${Date.now()}`;
+        const completeChannel = `ai-stream-complete-${Date.now()}`;
+        const errorChannel = `ai-stream-error-${Date.now()}`;
+
+        // Remove any potential lingering listeners
+        window.electron.ipc.removeAllListeners(chunkChannel);
+        window.electron.ipc.removeAllListeners(completeChannel);
+        window.electron.ipc.removeAllListeners(errorChannel);
+
         throw error;
       }
     },

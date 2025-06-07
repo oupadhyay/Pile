@@ -68,7 +68,7 @@ describe('AIContext', () => {
     useElectronStore.mockImplementation(
       mockElectronStore({
         pileAIProvider: 'gemini',
-        model: 'gemini-2.5-flash', // Include the expected model in the store
+        model: 'gemini-2.0-flash', // Include the expected model in the store
         baseUrl: 'https://api.openai.com/v1',
       }),
     );
@@ -88,7 +88,7 @@ describe('AIContext', () => {
     });
 
     expect(context.pileAIProvider).toBe('gemini');
-    expect(context.model).toBe('gemini-2.5-flash');
+    expect(context.model).toBe('gemini-2.0-flash');
     // baseUrl should remain as the stored value since getProviderBaseUrl returns null for gemini
     expect(context.baseUrl).toBe('https://api.openai.com/v1');
     expect(context.ai.type).toBe('gemini');
@@ -119,7 +119,7 @@ describe('AIContext', () => {
     });
 
     expect(context.pileAIProvider).toBe('gemini');
-    expect(context.model).toBe('gemini-2.5-flash');
+    expect(context.model).toBe('gemini-2.0-flash');
   });
 
   it('provides available models for gemini', async () => {
@@ -141,9 +141,10 @@ describe('AIContext', () => {
       );
     });
     expect(context.getAvailableModels()).toEqual([
-      'gemini-2.5-flash',
-      'gemini-2.0-pro',
+      'gemini-2.5-pro-preview-06-05',
+      'gemini-2.5-flash-preview-05-20',
       'gemini-2.0-flash',
+      'gemini-2.0-flash-lite',
     ]);
   });
 

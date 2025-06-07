@@ -15,19 +15,29 @@ const getProviderBaseUrl = (provider: string) => {
   return null;
 };
 
+const isGeminiModel = (model: string): boolean => {
+  const isGemini = model.startsWith('gemini-');
+  return isGemini;
+};
+
 ipcMain.handle(
   'ai-generate-completion',
-  async (_, { provider, model, messages, maxTokens = 500 }) => {
+  async (_, { provider, model, messages }) => {
     try {
       if (provider === 'ollama') {
         const response = await fetch(`${OLLAMA_URL}/chat`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ model, messages }),
+          body: JSON.stringify({ model, messages, stream: false }),
         });
 
         if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`);
+          const errorText = await response
+            .text()
+            .catch(() => 'No error details');
+          throw new Error(
+            `HTTP error! status: ${response.status} - ${errorText}`,
+          );
         }
 
         const reader = response.body?.getReader();
@@ -81,12 +91,27 @@ ipcMain.handle(
           baseURL,
         });
 
-        const stream = await openai.chat.completions.create({
-          model,
-          stream: true,
-          max_tokens: maxTokens,
-          messages,
-        });
+        let stream;
+        try {
+          const completionParams: any = {
+            model,
+            stream: true,
+            messages,
+            max_tokens: 500,
+          };
+
+          // Add reasoning_effort: none for Gemini models to disable thinking
+          if (isGeminiModel(model)) {
+            // console.warn(`Disabling thinking for Gemini model: ${model}`);
+            completionParams.reasoning_effort = 'none';
+          }
+
+          stream = await openai.chat.completions.create(completionParams);
+        } catch (apiError: any) {
+          throw new Error(
+            `API Error (${apiError.status}): ${apiError.message || 'Unknown error'}`,
+          );
+        }
 
         const chunks: string[] = [];
         for await (const part of stream) {
@@ -99,7 +124,16 @@ ipcMain.handle(
       }
       throw new Error(`Unsupported provider: ${provider}`);
     } catch (error) {
+      // eslint-disable-next-line no-console
       console.error('AI request failed:', error);
+      // Check if it's a network error that might indicate Ollama is not running
+      if (error instanceof TypeError && error.message.includes('fetch')) {
+        return {
+          success: false,
+          error:
+            'Unable to connect to AI service. Please ensure Ollama is running if using Ollama provider.',
+        };
+      }
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Unknown error',
@@ -110,7 +144,7 @@ ipcMain.handle(
 
 ipcMain.handle(
   'ai-generate-completion-stream',
-  async (_, { provider, model, messages, maxTokens = 500 }) => {
+  async (_, { provider, model, messages }) => {
     // For streaming, we'll return a unique request ID and use a separate channel for chunks
     const requestId = Date.now().toString();
 
@@ -119,11 +153,16 @@ ipcMain.handle(
         const response = await fetch(`${OLLAMA_URL}/chat`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ model, messages }),
+          body: JSON.stringify({ model, messages, stream: true }),
         });
 
         if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`);
+          const errorText = await response
+            .text()
+            .catch(() => 'No error details');
+          throw new Error(
+            `HTTP error! status: ${response.status} - ${errorText}`,
+          );
         }
 
         const reader = response.body?.getReader();
@@ -211,12 +250,49 @@ ipcMain.handle(
         // Process stream in background
         (async () => {
           try {
-            const stream = await openai.chat.completions.create({
-              model,
-              stream: true,
-              max_tokens: maxTokens,
-              messages,
-            });
+            let stream;
+            try {
+              const completionParams: any = {
+                model,
+                stream: true,
+                messages,
+                max_tokens: 500,
+              };
+
+              // Add reasoning_effort: none for Gemini models to disable thinking
+              if (isGeminiModel(model)) {
+                // Disabling thinking for Gemini streaming model
+                completionParams.reasoning_effort = 'none';
+              }
+
+              stream = await openai.chat.completions.create(completionParams);
+            } catch (apiError: any) {
+              // eslint-disable-next-line no-console
+              console.error('OpenAI/Gemini streaming API error:', apiError);
+              let errorMessage = 'AI request failed';
+              if (apiError.status === 404) {
+                errorMessage = `Model "${model}" not found. Please check if the model name is correct.`;
+              } else if (apiError.status === 401) {
+                errorMessage =
+                  'Invalid API key. Please check your API key configuration.';
+              } else if (apiError.status === 429) {
+                errorMessage = 'Rate limit exceeded. Please try again later.';
+              } else if (apiError.status) {
+                errorMessage = `API Error (${apiError.status}): ${apiError.message || 'Unknown error'}`;
+              } else {
+                errorMessage = apiError.message || 'Unknown error';
+              }
+              const mainWindow =
+                BrowserWindow.getFocusedWindow() ||
+                BrowserWindow.getAllWindows()[0];
+              if (mainWindow) {
+                mainWindow.webContents.send(
+                  `ai-stream-error-${requestId}`,
+                  errorMessage,
+                );
+              }
+              return;
+            }
 
             for await (const part of stream) {
               if (part.choices[0]?.delta?.content) {
@@ -241,6 +317,8 @@ ipcMain.handle(
               mainWindow.webContents.send(`ai-stream-complete-${requestId}`);
             }
           } catch (error) {
+            // eslint-disable-next-line no-console
+            console.error('Streaming error:', error);
             const mainWindow =
               BrowserWindow.getFocusedWindow() ||
               BrowserWindow.getAllWindows()[0];
@@ -257,6 +335,7 @@ ipcMain.handle(
       }
       throw new Error(`Unsupported provider: ${provider}`);
     } catch (error) {
+      // eslint-disable-next-line no-console
       console.error('AI stream request failed:', error);
       return {
         success: false,
