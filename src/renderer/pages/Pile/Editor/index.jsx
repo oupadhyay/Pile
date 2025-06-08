@@ -70,7 +70,7 @@ const Editor = memo(
 
       addKeyboardShortcuts() {
         return {
-          Enter: ({ editor }) => {
+          'Meta-Enter': ({ editor }) => {
             editor.commands.triggerSubmit();
             return true;
           },
