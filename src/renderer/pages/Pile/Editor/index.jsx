@@ -1,5 +1,6 @@
 import './ProseMirror.scss';
 import styles from './Editor.module.scss';
+import 'katex/dist/katex.min.css';
 import { useCallback, useState, useEffect, useRef, memo } from 'react';
 import { Extension } from '@tiptap/core';
 import { useEditor, EditorContent } from '@tiptap/react';
@@ -8,6 +9,7 @@ import StarterKit from '@tiptap/starter-kit';
 import Typography from '@tiptap/extension-typography';
 import Placeholder from '@tiptap/extension-placeholder';
 import CharacterCount from '@tiptap/extension-character-count';
+import { MathExtension } from '@aarkue/tiptap-math-extension';
 import { DiscIcon, PhotoIcon, TrashIcon, TagIcon } from 'renderer/icons';
 import { motion, AnimatePresence } from 'framer-motion';
 import { postFormat } from 'renderer/utils/fileOperations';
@@ -122,6 +124,9 @@ const Editor = memo(
         CharacterCount.configure({
           limit: 10000,
         }),
+        MathExtension.configure({
+          evaluation: true,
+        }),
         EnterSubmitExtension,
       ],
       editorProps: {
@@ -162,6 +167,20 @@ const Editor = memo(
       onUpdate: ({ editor }) => {
         setContent(editor.getHTML());
       },
+    });
+
+    // Read-only editor for non-editable view to ensure LaTeX is rendered
+    const readOnlyEditor = useEditor({
+      extensions: [
+        StarterKit,
+        Typography,
+        Link,
+        MathExtension.configure({
+          evaluation: true,
+        }),
+      ],
+      editable: false,
+      content: post?.content || '',
     });
 
     const elRef = useRef();
@@ -276,7 +295,13 @@ const Editor = memo(
           editor.commands.setContent(post.content);
         }
       }
-    }, [post, editor]);
+      if (readOnlyEditor) {
+        if (!post) return;
+        if (post?.content != readOnlyEditor.getHTML()) {
+          readOnlyEditor.commands.setContent(post.content);
+        }
+      }
+    }, [post, editor, readOnlyEditor]);
 
     const triggerAttachment = () => attachToPost();
 
@@ -327,10 +352,10 @@ const Editor = memo(
           />
         ) : (
           <div className={styles.uneditable}>
-            <div
+            <EditorContent
               key="uneditable"
               className={`${styles.editor} ${isBig() && styles.editorBig}`}
-              dangerouslySetInnerHTML={{ __html: previewContent }}
+              editor={readOnlyEditor}
             />
           </div>
         )}
