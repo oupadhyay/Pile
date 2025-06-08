@@ -72,8 +72,8 @@
     }
 
     code {
-        background-color: rgba(#616161, 0.1);
-        color: #616161;
+        background-color: rgba(var(--code-primary), 0.1);
+        color: var(--code-primary);
     }
 
     pre {
