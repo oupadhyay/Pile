@@ -53,4 +53,3 @@ export * from './img/BoxOpenIcon';
 
 // logos
 export * from './logos/OllamaIcon';
-export * from './logos/GeminiIcon';

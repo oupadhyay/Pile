@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
 import styles from './CreatePile.module.scss';
-import { TrashIcon } from '../../icons';
+import { TrashIcon } from 'renderer/icons';
 import { Link } from 'react-router-dom';
-import { usePilesContext } from '../../context/PilesContext';
+import { usePilesContext } from 'renderer/context/PilesContext';
 import { useNavigate } from 'react-router-dom';
 import icon from '../../../../assets/logo.png';
 import { motion } from 'framer-motion';
@@ -86,10 +86,7 @@ export default function CreatePile() {
               Pick a place to store this pile
             </div>
 
-            <button
-              data-placeholder="Location"
-              onClick={handleClick}
-            >
+            <button placeholder="Location" onClick={handleClick}>
               {path ? path : 'Choose a location'}
             </button>
           </div>

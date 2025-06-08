@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import styles from './License.module.scss';
+import { TrashIcon } from 'renderer/icons';
 import { Link } from 'react-router-dom';
 import { usePilesContext } from '../../context/PilesContext';
 
