@@ -5,6 +5,7 @@ const { walk } = require('../util');
 const matter = require('gray-matter');
 const settings = require('electron-settings');
 const {getKey} = require('../utils/store');
+const OpenAI = require('openai');
 
 // Todo: Cache the norms alongside embeddings at some point
 // to avoid recomputing them for every query
@@ -136,41 +137,53 @@ class PileEmbeddings {
     }
   }
 
-  // todo: based on which ai is configured this should either
-  // use ollama or openai
+  // Generate embeddings based on configured AI provider
   async generateEmbedding(document) {
     const pileAIProvider = await settings.get('pileAIProvider');
     const embeddingModel = await settings.get('embeddingModel');
-    const isOllama = pileAIProvider === 'ollama';
 
-    if (isOllama) {
+    if (pileAIProvider === 'ollama') {
       const url = 'http://127.0.0.1:11434/api/embed';
       const data = {
-        model: 'mxbai-embed-large',
+        model: embeddingModel || 'mxbai-embed-large',
         input: document,
       };
       try {
         const response = await axios.post(url, data);
-        const embeddings = response.data.embeddings;
         return response.data.embeddings[0];
       } catch (error) {
         console.error('Error generating embedding with Ollama:', error);
         return null;
       }
-    } else {
-      const url = 'https://api.openai.com/v1/embeddings';
-      const headers = {
-        Authorization: `Bearer ${this.apiKey}`,
-        'Content-Type': 'application/json',
-      };
-      const data = {
-        model: 'text-embedding-3-small',
-        input: document,
-      };
+    } else if (pileAIProvider === 'gemini') {
+      const openai = new OpenAI({
+        apiKey: this.apiKey,
+        baseURL: 'https://generativelanguage.googleapis.com/v1beta/openai/'
+      });
 
       try {
-        const response = await axios.post(url, data, { headers });
-        return response.data.data[0].embedding;
+        const response = await openai.embeddings.create({
+          model: 'text-embedding-004',
+          input: document,
+        });
+        return response.data[0].embedding;
+      } catch (error) {
+        console.error('Error generating embedding with Gemini:', error);
+        return null;
+      }
+    } else {
+      // Default to OpenAI
+      const openai = new OpenAI({
+        apiKey: this.apiKey,
+        baseURL: 'https://api.openai.com/v1'
+      });
+
+      try {
+        const response = await openai.embeddings.create({
+          model: embeddingModel || 'text-embedding-3-small',
+          input: document,
+        });
+        return response.data[0].embedding;
       } catch (error) {
         console.error('Error generating embedding with OpenAI:', error);
         return null;

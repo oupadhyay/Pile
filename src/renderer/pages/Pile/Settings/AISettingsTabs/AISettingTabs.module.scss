@@ -250,88 +250,36 @@
 }
 
 .tabsTrigger {
+  all: unset;
   font-family: inherit;
-  padding: 0 20px;
-  height: 38px;
+  background-color: transparent;
   flex: 1;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 15px;
+  font-size: 13px;
   line-height: 1;
   color: var(--secondary);
   user-select: none;
-  font-size: 0.85em;
-  border-bottom: 2px solid var(--bg-tertiary);
-  gap: 10px;
-  justify-content: space-between;
-  // background: var(--bg-tertiary);
-
-  .icon {
-    height: 18px;
-    width: 18px;
-  }
-
-  &:first-child {
-    border-top-left-radius: 10px;
-  }
-
-  &:last-child {
-    border-top-right-radius: 10px;
-  }
+  transition: all ease-in-out 120ms;
+  border-bottom: 2px solid transparent;
+  gap: 8px;
+  padding: 10px 0;
 
   &:hover {
-    cursor: pointer;
     color: var(--primary);
+    cursor: pointer;
   }
 
   &[data-state='active'] {
-    color: var(--active);
-    background-color: var(--bg);
-    border-bottom: 2px solid var(--bg);
-  }
-
-  &:focus {
-    position: relative;
-  }
-
-  &.activeLeft {
-    border-bottom-left-radius: 10px;
-    border-left: 2px solid var(--bg-tertiary);
-    border-right: 2px solid var(--bg-tertiary);
-
-    &:first-child {
-    }
-
-    &:last-child {
-    }
-  }
-
-  &.activeCenter {
-    &:first-child {
-      border-right: 2px solid var(--bg-tertiary);
-      border-bottom-right-radius: 12px;
-    }
-
-    &:last-child {
-      border-bottom-left-radius: 12px;
-      border-left: 2px solid var(--bg-tertiary);
-    }
-  }
-
-  &.activeRight {
-    border-right: 2px solid var(--bg-tertiary);
-    border-bottom-right-radius: 12px;
-
-    &:first-child {
-      border-bottom-right-radius: 0px;
-    }
+    color: var(--primary);
+    border-bottom: 2px solid var(--primary);
   }
 }
 
 .tabsContent {
   flex-grow: 1;
-  padding: 12px;
+  padding: 20px;
   border-bottom-left-radius: 17px;
   border-bottom-right-radius: 17px;
   outline: none;
