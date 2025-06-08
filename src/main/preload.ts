@@ -4,7 +4,7 @@ import { contextBridge, ipcRenderer, IpcRendererEvent, shell } from 'electron';
 import fs from 'fs';
 import path from 'path';
 
-export type Channels = 'ipc-example';
+export type Channels = 'ipc-example' | string;
 
 const electronHandler = {
   ipc: {
