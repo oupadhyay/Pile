@@ -12,7 +12,7 @@
     pointer-events: none;
   }
 
-  > * + * {
+  >*+* {
     margin-top: 0.75em;
   }
 
@@ -35,7 +35,7 @@
       align-items: center;
       margin: 0 0 4px 0;
 
-      > label {
+      >label {
         display: flex;
         align-items: center;
         flex: 0 0 auto;
@@ -55,7 +55,7 @@
         }
       }
 
-      > div {
+      >div {
         flex: 1 1 auto;
       }
     }
@@ -71,13 +71,26 @@
   }
 
   code {
-    background-color: rgba(#616161, 0.1);
-    color: #616161;
+    background-color: rgba(var(--code-primary), 0.1);
+    color: var(--code-primary);
+  }
+}
+
+pre {
+  background: #0d0d0d;
+  color: #fff;
+  font-family: 'JetBrainsMono', monospace;
+  padding: 0.75rem 1rem;
+  border-radius: 0.5rem;
+
+  code {
+    background-color: rgba(var(--code-primary), 0.1);
+    color: var(--code-primary);
   }
 
   pre {
-    background: #0d0d0d;
-    color: #fff;
+    background: #0D0D0D;
+    color: #FFF;
     font-family: 'JetBrainsMono', monospace;
     padding: 0.75rem 1rem;
     border-radius: 0.5rem;
@@ -97,12 +110,12 @@
 
   blockquote {
     padding-left: 1rem;
-    border-left: 2px solid rgba(#0d0d0d, 0.1);
+    border-left: 2px solid rgba(#0D0D0D, 0.1);
   }
 
   hr {
     border: none;
-    border-top: 2px solid rgba(#0d0d0d, 0.1);
+    border-top: 2px solid rgba(#0D0D0D, 0.1);
     margin: 2rem 0;
   }
 }

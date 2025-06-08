@@ -1,12 +1,16 @@
-/* eslint-disable no-use-before-define */
+import './ProseMirror.scss';
+import styles from './Editor.module.scss';
+import 'katex/dist/katex.min.css';
+import { useCallback, useState, useEffect, useRef, memo } from 'react';
 import { Extension } from '@tiptap/core';
 import CharacterCount from '@tiptap/extension-character-count';
 import Link from '@tiptap/extension-link';
 import Placeholder from '@tiptap/extension-placeholder';
+import { MathExtension } from '@aarkue/tiptap-math-extension';
+import { useParams } from 'react-router-dom';
 import Typography from '@tiptap/extension-typography';
 import { EditorContent, useEditor } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
-import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import { useAIContext } from 'renderer/context/AIContext';
 import { useToastsContext } from 'renderer/context/ToastsContext';
 import usePost from 'renderer/hooks/usePost';
@@ -14,7 +18,6 @@ import useThread from 'renderer/hooks/useThread';
 import { PhotoIcon } from 'renderer/icons';
 import PropTypes from 'prop-types';
 import Attachments from './Attachments';
-import styles from './Editor.module.scss';
 import LinkPreviews from './LinkPreviews';
 import './ProseMirror.scss';
 
@@ -110,6 +113,9 @@ const Editor = memo(
         CharacterCount.configure({
           limit: 10000,
         }),
+        MathExtension.configure({
+          evaluation: true,
+        }),
         EnterSubmitExtension,
       ],
       editorProps: {
@@ -150,6 +156,20 @@ const Editor = memo(
       onUpdate: ({ editor: tipTapEditor }) => {
         setContent(tipTapEditor.getHTML());
       },
+    });
+
+    // Read-only editor for non-editable view to ensure LaTeX is rendered
+    const readOnlyEditor = useEditor({
+      extensions: [
+        StarterKit,
+        Typography,
+        Link,
+        MathExtension.configure({
+          evaluation: true,
+        }),
+      ],
+      editable: false,
+      content: post?.content || '',
     });
 
     const elRef = useRef();
@@ -272,7 +292,13 @@ const Editor = memo(
           editor.commands.setContent(post.content);
         }
       }
-    }, [post, editor]);
+      if (readOnlyEditor) {
+        if (!post) return;
+        if (post?.content != readOnlyEditor.getHTML()) {
+          readOnlyEditor.commands.setContent(post.content);
+        }
+      }
+    }, [post, editor, readOnlyEditor]);
 
     const triggerAttachment = () => attachToPost();
 
@@ -323,11 +349,10 @@ const Editor = memo(
           />
         ) : (
           <div className={styles.uneditable}>
-            <div
+            <EditorContent
               key="uneditable"
               className={`${styles.editor} ${isBig() && styles.editorBig}`}
-              // eslint-disable-next-line react/no-danger
-              dangerouslySetInnerHTML={{ __html: previewContent }}
+              editor={readOnlyEditor}
             />
           </div>
         )}
