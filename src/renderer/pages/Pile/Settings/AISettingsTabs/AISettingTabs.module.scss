@@ -69,6 +69,11 @@
   display: flex;
   gap: 14px;
 
+  & > * {
+    width: 100%;
+    min-width: 100px;
+  }
+
   .Fieldset {
     &:first-child {
       flex: 2 1 70%;
@@ -209,6 +214,8 @@
 select.input {
   cursor: pointer;
   justify-content: flex-start;
+  width: 100%;
+  min-width: 80px;
 
   option {
     background: var(--bg-tertiary);
@@ -379,7 +386,7 @@ select.input {
   font-size: 0.9em;
   line-height: 1.5;
   color: var(--primary);
-  width: 80%;
+  width: 100%;
   margin-bottom: 12px;
 }
 

@@ -16,6 +16,7 @@ export default function AISettingTabs({ APIkey, setCurrentKey }) {
     baseUrl,
     pileAIProvider,
     setPileAIProvider,
+    getAvailableModels,
   } = useAIContext();
 
   // Local state for inputs with debounced updates
@@ -149,6 +150,7 @@ export default function AISettingTabs({ APIkey, setCurrentKey }) {
           'Remember to manage your spend by setting up a budget in the API service you choose to use.',
         pitch:
           'Create an API key in Google AI Studio and paste it here to start using Gemini AI models in Pile.',
+        availableModels: getAvailableModels(),
       },
     };
     return configs[remoteProvider] || configs.openai;
@@ -159,7 +161,6 @@ export default function AISettingTabs({ APIkey, setCurrentKey }) {
   return (
     <Tabs.Root
       className={styles.tabsRoot}
-      defaultValue="remote"
       value={
         pileAIProvider === 'openai' || pileAIProvider === 'gemini'
           ? 'remote'
@@ -343,13 +344,36 @@ export default function AISettingTabs({ APIkey, setCurrentKey }) {
               <label className={styles.label} htmlFor="remote-model">
                 Model
               </label>
-              <input
-                id="remote-model"
-                className={styles.input}
-                onChange={handleInputChange(setLocalModel, debouncedSetModel)}
-                value={localModel}
-                placeholder={currentConfig.modelPlaceholder}
-              />
+              {currentConfig.availableModels ? (
+                <select
+                  id="remote-model"
+                  className={`${styles.input} ${styles.modelInput}`}
+                  value={localModel}
+                  onChange={(e) => {
+                    const newModel = e.target.value;
+                    setLocalModel(newModel);
+                    setModel(newModel);
+                    setProviderModels((prev) => ({
+                      ...prev,
+                      [remoteProvider]: newModel,
+                    }));
+                  }}
+                >
+                  {currentConfig.availableModels.map((availableModel) => (
+                    <option key={availableModel} value={availableModel}>
+                      {availableModel}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  id="remote-model"
+                  className={styles.input}
+                  onChange={handleInputChange(setLocalModel, debouncedSetModel)}
+                  value={localModel}
+                  placeholder={currentConfig.modelPlaceholder}
+                />
+              )}
             </fieldset>
           </div>
           <fieldset className={styles.fieldset}>

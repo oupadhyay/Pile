@@ -31,6 +31,8 @@ const DEFAULT_PROMPT =
 
 const getProviderBaseUrl = (provider) => {
   if (provider === 'openai') return OPENAI_URL;
+  if (provider === 'gemini')
+    return 'https://generativelanguage.googleapis.com/v1beta/openai/';
   return null;
 };
 
@@ -66,10 +68,10 @@ export function AIContextProvider({ children }) {
   const getAvailableModels = useCallback(() => {
     if (pileAIProvider === 'gemini') {
       return [
-        'gemini-2.5-pro-preview-06-05',
         'gemini-2.5-flash-preview-05-20',
         'gemini-2.0-flash',
         'gemini-2.0-flash-lite',
+        'gemini-1.5-flash',
       ];
     }
     // Add other providers if they have a fixed list of models
@@ -193,16 +195,6 @@ export function AIContextProvider({ children }) {
       } catch (error) {
         // eslint-disable-next-line no-console
         console.error('AI request failed:', error);
-        // Make sure to clean up any pending listeners
-        const chunkChannel = `ai-stream-chunk-${Date.now()}`;
-        const completeChannel = `ai-stream-complete-${Date.now()}`;
-        const errorChannel = `ai-stream-error-${Date.now()}`;
-
-        // Remove any potential lingering listeners
-        window.electron.ipc.removeAllListeners(chunkChannel);
-        window.electron.ipc.removeAllListeners(completeChannel);
-        window.electron.ipc.removeAllListeners(errorChannel);
-
         throw error;
       }
     },
