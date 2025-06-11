@@ -383,7 +383,7 @@ export default function AISettingTabs({ APIkey, setCurrentKey }) {
             <input
               id="remote-api-key"
               className={styles.input}
-              onChange={setCurrentKey}
+              onChange={(e) => setCurrentKey(e.target.value)}
               value={APIkey}
               placeholder={currentConfig.keyPlaceholder}
             />
