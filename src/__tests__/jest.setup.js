@@ -1,3 +1,4 @@
+/* eslint-disable no-console */
 /* eslint-disable no-underscore-dangle */
 import 'jest-fetch-mock';
 import '@testing-library/jest-dom';
@@ -30,7 +31,12 @@ document.createElement = jest.fn().mockImplementation((tagName) => {
       set(value) {
         this._innerHTML = value;
         // Simple text extraction for testing
-        this.textContent = value.replace(/<[^>]*>/g, '');
+        let sanitized = value;
+        // Remove HTML tags including malformed ones with nested < characters
+        while (/<[^>]*>/g.test(sanitized)) {
+          sanitized = sanitized.replace(/<[^>]*>/g, '');
+        }
+        this.textContent = sanitized;
         this.innerText = this.textContent;
       },
     });
