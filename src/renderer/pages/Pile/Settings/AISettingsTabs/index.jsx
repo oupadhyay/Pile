@@ -2,7 +2,7 @@
 import * as Tabs from '@radix-ui/react-tabs';
 import { useCallback, useEffect, useState } from 'react';
 import { useAIContext } from 'renderer/context/AIContext';
-import { BoxOpenIcon, CardIcon, GeminiIcon, OllamaIcon } from 'renderer/icons';
+import { BoxOpenIcon, CardIcon, OllamaIcon } from 'renderer/icons';
 import PropTypes from 'prop-types';
 import styles from './AISettingTabs.module.scss';
 
@@ -17,11 +17,21 @@ export default function AISettingTabs({ APIkey, setCurrentKey }) {
     pileAIProvider,
     setPileAIProvider,
   } = useAIContext();
+
   // Local state for inputs with debounced updates
   const [localModel, setLocalModel] = useState(model);
   const [localEmbeddingModel, setLocalEmbeddingModel] =
     useState(embeddingModel);
   const [localBaseUrl, setLocalBaseUrl] = useState(baseUrl);
+  const [remoteProvider, setRemoteProvider] = useState(
+    pileAIProvider === 'gemini' ? 'gemini' : 'openai',
+  );
+
+  // Remember model for each provider
+  const [providerModels, setProviderModels] = useState({
+    openai: model,
+    gemini: model,
+  });
 
   // Debounce timers
   const [modelTimer, setModelTimer] = useState(null);
@@ -31,7 +41,11 @@ export default function AISettingTabs({ APIkey, setCurrentKey }) {
   // Update local state when context values change (e.g., switching tabs)
   useEffect(() => {
     setLocalModel(model);
-  }, [model]);
+    setProviderModels((prev) => ({
+      ...prev,
+      [pileAIProvider]: model,
+    }));
+  }, [model, pileAIProvider]);
 
   useEffect(() => {
     setLocalEmbeddingModel(embeddingModel);
@@ -41,14 +55,29 @@ export default function AISettingTabs({ APIkey, setCurrentKey }) {
     setLocalBaseUrl(baseUrl);
   }, [baseUrl]);
 
+  // Sync remoteProvider with pileAIProvider
+  useEffect(() => {
+    if (pileAIProvider === 'gemini') {
+      setRemoteProvider('gemini');
+    } else if (pileAIProvider === 'openai') {
+      setRemoteProvider('openai');
+    }
+  }, [pileAIProvider]);
+
   // Debounced update functions
   const debouncedSetModel = useCallback(
     (value) => {
       if (modelTimer) clearTimeout(modelTimer);
-      const timer = setTimeout(() => setModel(value), 800);
+      const timer = setTimeout(() => {
+        setModel(value);
+        setProviderModels((prev) => ({
+          ...prev,
+          [remoteProvider]: value,
+        }));
+      }, 800);
       setModelTimer(timer);
     },
-    [modelTimer, setModel],
+    [modelTimer, setModel, remoteProvider],
   );
 
   const debouncedSetEmbeddingModel = useCallback(
@@ -83,7 +112,9 @@ export default function AISettingTabs({ APIkey, setCurrentKey }) {
       clearTimeout(baseUrlTimer);
       setBaseUrl(localBaseUrl);
     }
-    setPileAIProvider(newValue);
+    // Map 'remote' to the selected provider for backward compatibility with existing context
+    const mappedValue = newValue === 'remote' ? remoteProvider : newValue;
+    setPileAIProvider(mappedValue);
   };
 
   const handleInputChange = (setter, debouncedSetter) => (e) => {
@@ -94,29 +125,75 @@ export default function AISettingTabs({ APIkey, setCurrentKey }) {
     }
   };
 
+  const getProviderConfig = () => {
+    const configs = {
+      openai: {
+        name: 'OpenAI',
+        baseUrlPlaceholder: 'https://api.openai.com/v1',
+        modelPlaceholder: 'gpt-4o',
+        keyPlaceholder: 'Paste an OpenAI API key to enable AI reflections',
+        keyLabel: 'OpenAI API key',
+        disclaimer:
+          'Remember to manage your spend by setting up a budget in the API service you choose to use.',
+        pitch:
+          'Create an API key in your OpenAI account and paste it here to start using GPT AI models in Pile.',
+      },
+      gemini: {
+        name: 'Gemini',
+        baseUrlPlaceholder:
+          'https://generativelanguage.googleapis.com/v1beta/openai/',
+        modelPlaceholder: 'gemini-2.0-flash',
+        keyPlaceholder: 'Paste a Gemini API key to enable AI reflections',
+        keyLabel: 'Gemini API key',
+        disclaimer:
+          'Remember to manage your spend by setting up a budget in the API service you choose to use.',
+        pitch:
+          'Create an API key in Google AI Studio and paste it here to start using Gemini AI models in Pile.',
+      },
+    };
+    return configs[remoteProvider] || configs.openai;
+  };
+
+  const currentConfig = getProviderConfig();
+
   return (
     <Tabs.Root
       className={styles.tabsRoot}
-      defaultValue="openai"
-      value={pileAIProvider}
+      defaultValue="remote"
+      value={
+        pileAIProvider === 'openai' || pileAIProvider === 'gemini'
+          ? 'remote'
+          : pileAIProvider
+      }
       onValueChange={handleTabChange}
     >
       <Tabs.List className={styles.tabsList} aria-label="Manage your account">
-        <Tabs.Trigger className={styles.tabsTrigger} value="subscription">
+        <Tabs.Trigger
+          className={`${styles.tabsTrigger} ${
+            pileAIProvider === 'ollama' ? styles.activeCenter : ''
+          } ${pileAIProvider === 'openai' || pileAIProvider === 'gemini' ? styles.activeRight : ''}`}
+          value="subscription"
+        >
           Subscription
           <CardIcon className={styles.icon} />
         </Tabs.Trigger>
-        <Tabs.Trigger className={styles.tabsTrigger} value="ollama">
+        <Tabs.Trigger
+          className={`${styles.tabsTrigger} ${
+            pileAIProvider === 'subscription' ? styles.activeLeft : ''
+          } ${pileAIProvider === 'openai' || pileAIProvider === 'gemini' ? styles.activeRight : ''}`}
+          value="ollama"
+        >
           Ollama
           <OllamaIcon className={styles.icon} />
         </Tabs.Trigger>
-        <Tabs.Trigger className={styles.tabsTrigger} value="openai">
-          OpenAI
+        <Tabs.Trigger
+          className={`${styles.tabsTrigger} ${
+            pileAIProvider === 'ollama' ? styles.activeCenter : ''
+          } ${pileAIProvider === 'subscription' ? styles.activeLeft : ''}`}
+          value="remote"
+        >
+          Remote AI
           <BoxOpenIcon className={styles.icon} />
-        </Tabs.Trigger>
-        <Tabs.Trigger className={styles.tabsTrigger} value="gemini">
-          Gemini
-          <GeminiIcon className={styles.icon} />
         </Tabs.Trigger>
       </Tabs.List>
 
@@ -200,97 +277,94 @@ export default function AISettingTabs({ APIkey, setCurrentKey }) {
         </div>
       </Tabs.Content>
 
-      <Tabs.Content className={styles.tabsContent} value="openai">
+      <Tabs.Content className={styles.tabsContent} value="remote">
         <div className={styles.providers}>
-          <div className={styles.pitch}>
-            Create an API key in your OpenAI account and paste it here to start
-            using GPT AI models in Pile.
-          </div>
+          <div className={styles.pitch}>{currentConfig.pitch}</div>
+
+          <fieldset className={styles.fieldset}>
+            <label className={styles.label} htmlFor="remote-provider">
+              Provider
+            </label>
+            <select
+              id="remote-provider"
+              className={styles.input}
+              value={remoteProvider}
+              onChange={(e) => {
+                const newProvider = e.target.value;
+                setRemoteProvider(newProvider);
+                setPileAIProvider(newProvider);
+
+                // Update base URL but keep the model that was previously set for this provider
+                const newBaseUrl =
+                  {
+                    openai: 'https://api.openai.com/v1',
+                    gemini:
+                      'https://generativelanguage.googleapis.com/v1beta/openai/',
+                  }[newProvider] || 'https://api.openai.com/v1';
+
+                const rememberedModel =
+                  providerModels[newProvider] ||
+                  {
+                    openai: 'gpt-4o',
+                    gemini: 'gemini-2.0-flash',
+                  }[newProvider] ||
+                  'gpt-4o';
+
+                setLocalBaseUrl(newBaseUrl);
+                setLocalModel(rememberedModel);
+
+                // Immediately update the context as well
+                setBaseUrl(newBaseUrl);
+                setModel(rememberedModel);
+              }}
+            >
+              <option value="openai">OpenAI</option>
+              <option value="gemini">Gemini</option>
+            </select>
+          </fieldset>
 
           <div className={styles.group}>
             <fieldset className={styles.fieldset}>
-              <label className={styles.label} htmlFor="openai-base-url">
+              <label className={styles.label} htmlFor="remote-base-url">
                 Base URL
               </label>
               <input
-                id="openai-base-url"
+                id="remote-base-url"
                 className={styles.input}
                 onChange={handleInputChange(
                   setLocalBaseUrl,
                   debouncedSetBaseUrl,
                 )}
                 value={localBaseUrl}
-                placeholder="https://api.openai.com/v1"
+                placeholder={currentConfig.baseUrlPlaceholder}
               />
             </fieldset>
             <fieldset className={styles.fieldset}>
-              <label className={styles.label} htmlFor="openai-model">
+              <label className={styles.label} htmlFor="remote-model">
                 Model
               </label>
               <input
-                id="openai-model"
+                id="remote-model"
                 className={styles.input}
                 onChange={handleInputChange(setLocalModel, debouncedSetModel)}
                 value={localModel}
-                placeholder="gpt-4o"
+                placeholder={currentConfig.modelPlaceholder}
               />
             </fieldset>
           </div>
           <fieldset className={styles.fieldset}>
-            <label className={styles.label} htmlFor="openai-api-key">
-              OpenAI API key
+            <label className={styles.label} htmlFor="remote-api-key">
+              {currentConfig.keyLabel}
             </label>
             <input
-              id="openai-api-key"
+              id="remote-api-key"
               className={styles.input}
               onChange={setCurrentKey}
               value={APIkey}
-              placeholder="Paste an OpenAI API key to enable AI reflections"
+              placeholder={currentConfig.keyPlaceholder}
             />
           </fieldset>
-          <div className={styles.disclaimer}>
-            Remember to manage your spend by setting up a budget in the API
-            service you choose to use.
-          </div>
-        </div>
-      </Tabs.Content>
-
-      <Tabs.Content className={styles.tabsContent} value="gemini">
-        <div className={styles.providers}>
-          <div className={styles.pitch}>
-            Create an API key in Google AI Studio and paste it here to start
-            using Gemini AI models in Pile.
-          </div>
-          <div className={styles.group}>
-            <fieldset className={styles.fieldset}>
-              <label className={styles.label} htmlFor="gemini-model">
-                Model
-              </label>
-              <input
-                id="gemini-model"
-                className={styles.input}
-                onChange={handleInputChange(setLocalModel, debouncedSetModel)}
-                value={localModel}
-                placeholder="gemini-2.0-flash"
-              />
-            </fieldset>
-            <fieldset className={styles.fieldset}>
-              <label className={styles.label} htmlFor="gemini-api-key">
-                Gemini API key
-              </label>
-              <input
-                id="gemini-api-key"
-                className={styles.input}
-                onChange={handleInputChange(setCurrentKey)}
-                value={APIkey}
-                placeholder="Paste a Gemini API key to enable AI reflections"
-              />
-            </fieldset>
-          </div>
-          <div className={styles.disclaimer}>
-            Remember to manage your spend by setting up a budget in the API
-            service you choose to use.
-          </div>
+          <div className={styles.disclaimer}>{currentConfig.disclaimer}</div>
         </div>
       </Tabs.Content>
     </Tabs.Root>
