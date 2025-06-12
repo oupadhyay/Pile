@@ -232,10 +232,10 @@ const Editor = memo(
     // on entries added for the AI that are empty.
     const generateAiResponse = useCallback(async () => {
       if (
-        !editor ||
-        isAIResponding ||
-        !isAI ||
-        editor.state.doc.textContent.length > 0
+        !editor || // no editor
+        isAIResponding || // already responding
+        !isAI || // not AI post
+        editor.state.doc.textContent.length > 0 // not empty
       )
         return;
 
