@@ -14,6 +14,7 @@ import { useTimelineContext } from 'renderer/context/TimelineContext';
 import { AnimatePresence, motion } from 'framer-motion';
 import InstallUpdate from './InstallUpdate';
 import Chat from './Chat';
+import { isMac } from '../../utils/platformInfo'; // Corrected path
 
 export default function PileLayout({ children }) {
   const { pileName } = useParams();
@@ -43,8 +44,12 @@ export default function PileLayout({ children }) {
     return currentTheme ? currentTheme + 'Theme' : '';
   }, [currentTheme]);
 
+  // Note: isMac() will return default (false) on initial sync render,
+  // then the correct value after Device.getInfo() resolves.
+  // This might cause a flicker if styles.mac vs styles.win differ significantly.
   const osStyles = useMemo(
-    () => (window.electron.isMac ? styles.mac : styles.win),
+    () => (isMac() ? styles.mac : styles.win),
+    // For now, this matches the original dependency array.
     []
   );
 

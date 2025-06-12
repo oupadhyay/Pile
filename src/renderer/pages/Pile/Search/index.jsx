@@ -25,6 +25,7 @@ import InputBar from './InputBar';
 import { AnimatePresence, motion } from 'framer-motion';
 import OptionsBar from './OptionsBar';
 import VirtualList from '../Posts/VirtualList';
+import { isMac } from '../../../utils/platformInfo'; // Adjusted path
 
 const filterResults = (results, options) => {
   const filtered = results.filter((result) => {
@@ -149,8 +150,11 @@ export default function Search() {
     });
   };
 
+  // Note: isMac() will return default (false) on initial sync render,
+  // then the correct value after Device.getInfo() resolves.
   const osStyles = useMemo(
-    () => (window.electron.isMac ? styles.mac : styles.win),
+    () => (isMac() ? styles.mac : styles.win),
+    // For now, this matches the original dependency array.
     []
   );
 

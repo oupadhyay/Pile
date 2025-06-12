@@ -1,98 +1,152 @@
+import { Filesystem, Directory, Encoding } from '@capacitor/filesystem';
+// import { FilePicker } from '@capacitor/file-picker'; // Future replacement for 'open-file'
 import {
-  generateMarkdown,
-  createDirectory,
-  saveFile,
-  deleteFile,
-  getFilePathForNewPost,
-  getDirectoryPath,
+  // generateMarkdown, // Already using ipc.invoke for matter-stringify
+  // createDirectory, // Not directly used here, but available from fileOperations
+  // saveFile, // We'll use Filesystem.writeFile directly here
+  // deleteFile, // We'll use Filesystem.deleteFile directly here
+  getFilePathForNewPost, // Might be useful for generating attachment filenames
+  // getDirectoryPath,
 } from '../utils/fileOperations';
 
-export const getPost = async (postPath) => {
+// Helper for simple path joining, ensures no double slashes and handles undefined/empty parts
+const joinCapacitorPaths = (...parts) => {
+  return parts.filter(p => p).join('/').replace(/\/\//g, '/');
+};
+
+export const getPost = async (postPath) => { // postPath is relative to Directory.Data
   try {
-    if (!postPath) return;
-    const fileContent = await window.electron.ipc.invoke('get-file', postPath);
+    if (!postPath) return undefined; // Return undefined for clarity
+
+    const result = await Filesystem.readFile({
+      path: postPath,
+      directory: Directory.Data,
+      encoding: Encoding.UTF8,
+    });
+
+    // matter-parse is still an IPC call, polyfill returns undefined or basic content.
+    // A proper JS-based frontmatter parser will be needed for full functionality.
     const parsed = await window.electron.ipc.invoke(
-      'matter-parse',
-      fileContent
+      'matter-parse', // This will be 'matter-parse'
+      result.data
     );
-    const post = { content: parsed.content, data: parsed.data };
-    return post;
+
+    if (!parsed) { // Handle case where polyfill returns undefined
+        console.warn(`matter-parse returned undefined for ${postPath}. Using raw content.`);
+        return { content: result.data, data: {} }; // Basic fallback
+    }
+    return { content: parsed.content, data: parsed.data };
   } catch (error) {
-    // TODO: check and cleanup after these files
+    console.error(`Error getting post ${postPath}:`, error);
+    return undefined; // Return undefined on error
   }
 };
 
 export const attachToPostCreator =
   (setPost, getCurrentPilePath) => async (imageData, fileExtension) => {
-    const storePath = getCurrentPilePath();
+    const pileRootPath = getCurrentPilePath(); // e.g., "MyNotesPile" (relative to Directory.Data)
+    if (!pileRootPath) {
+      console.error("Cannot attach file: current pile path not found.");
+      return;
+    }
 
-    let newAttachments = [];
-    if (imageData) {
-      // save image data to a file
-      const newFilePath = await window.electron.ipc.invoke('save-file', {
-        fileData: imageData,
-        fileExtension: fileExtension,
-        storePath: storePath,
-      });
+    const attachmentsDir = joinCapacitorPaths(pileRootPath, '_attachments');
+    try {
+        // Ensure attachments directory exists for the pile
+        await Filesystem.mkdir({ path: attachmentsDir, directory: Directory.Data, recursive: true });
+    } catch (e) {
+        // Ignore if dir already exists, log other errors
+        if (!e.message || !e.message.toLowerCase().includes('already exists')) {
+            console.error("Failed to create _attachments directory", e);
+            return;
+        }
+    }
 
-      if (newFilePath) {
-        newAttachments.push(newFilePath);
-      } else {
-        console.error('Failed to save the pasted image.');
+    let newAttachmentPathsRelative = []; // Paths relative to pile root
+
+    if (imageData) { // Pasted image data
+      const timestamp = new Date().getTime();
+      const attachmentFileName = `img_${timestamp}.${fileExtension || 'png'}`;
+      const attachmentSavePath = joinCapacitorPaths(attachmentsDir, attachmentFileName); // Relative to Directory.Data
+
+      try {
+        await Filesystem.writeFile({
+          path: attachmentSavePath,
+          data: imageData, // Assuming imageData is base64 or a string. If raw binary, needs conversion for some platforms.
+          directory: Directory.Data,
+          // Encoding might be needed if it's not base64, e.g. Encoding.UTF8 for text-based data
+        });
+        newAttachmentPathsRelative.push(joinCapacitorPaths('_attachments', attachmentFileName));
+      } catch (error) {
+        console.error('Failed to save pasted image:', error);
+        return; // Stop if saving failed
       }
-    } else {
-      newAttachments = await window.electron.ipc.invoke('open-file', {
-        storePath: storePath,
+    } else { // User picking a file
+      console.warn("DUMMY: 'open-file' (FilePicker) not implemented yet. No file selected.");
+      // Placeholder for FilePicker functionality
+      // try {
+      //   const result = await FilePicker.pickFiles({
+      //     multiple: true,
+      //     // types: ['image/*', 'application/pdf', etc.] // Define types if needed
+      //   });
+      //   for (const file of result.files) {
+      //     const attachmentFileName = `file_${new Date().getTime()}_${file.name}`;
+      //     const attachmentSavePath = joinCapacitorPaths(attachmentsDir, attachmentFileName);
+      //     // Read file content (file.data is usually base64 from FilePicker)
+      //     await Filesystem.writeFile({ path: attachmentSavePath, data: file.data, directory: Directory.Data });
+      //     newAttachmentPathsRelative.push(joinCapacitorPaths('_attachments', attachmentFileName));
+      //   }
+      // } catch (error) {
+      //   console.error('File picking failed or cancelled:', error);
+      //   // Don't stop, user might have cancelled
+      // }
+    }
+
+    if (newAttachmentPathsRelative.length > 0) {
+      setPost((post) => {
+        const attachments = [...newAttachmentPathsRelative, ...post.data.attachments];
+        return {
+          ...post,
+          data: { ...post.data, attachments },
+        };
       });
     }
-    // Attachments are stored relative to the base path from the
-    // base directory of the pile
-    const correctedPaths = newAttachments.map((path) => {
-      const pathArr = path.split(/[/\\]/).slice(-4);
-      const newPath = window.electron.joinPath(...pathArr);
-
-      return newPath;
-    });
-
-    setPost((post) => {
-      const attachments = [...correctedPaths, ...post.data.attachments];
-      const newPost = {
-        ...post,
-        data: { ...post.data, attachments },
-      };
-
-      return newPost;
-    });
   };
 
 export const detachFromPostCreator =
-  (setPost, getCurrentPilePath) => (attachmentPath) => {
+  (setPost, getCurrentPilePath) => async (attachmentPathRelToPile) => { // attachmentPath is relative to pile root
+    const pileRootPath = getCurrentPilePath();
+    if (!pileRootPath) {
+      console.error("Cannot detach file: current pile path not found.");
+      return;
+    }
+
+    const fullAttachmentPath = joinCapacitorPaths(pileRootPath, attachmentPathRelToPile); // Relative to Directory.Data
+
     setPost((post) => {
-      let newPost = JSON.parse(JSON.stringify(post));
-      const newAtt = newPost.data.attachments.filter(
-        (a) => a !== attachmentPath
+      const newAttachments = post.data.attachments.filter(
+        (a) => a !== attachmentPathRelToPile
       );
-
-      newPost.data.attachments = newAtt;
-
-      const fullPath = window.electron.joinPath(
-        getCurrentPilePath(),
-        attachmentPath
-      );
-
-      window.electron.deleteFile(fullPath, (err) => {
-        if (err) {
-          console.error('There was an error:', err);
-        } else {
-          console.log('File was deleted successfully');
-        }
-      });
-
-      console.log('Attachment removed', attachmentPath);
-
-      return newPost;
+      return {
+        ...post,
+        data: { ...post.data, attachments: newAttachments },
+      };
     });
+
+    try {
+      await Filesystem.deleteFile({
+        path: fullAttachmentPath,
+        directory: Directory.Data,
+      });
+      console.log('Attachment deleted:', fullAttachmentPath);
+    } catch (error) {
+      console.error('Error deleting attachment file:', error);
+      // Note: The state was updated even if file deletion failed. Consider if this is desired.
+    }
   };
+
+// --- The rest of the functions (tagActionsCreator, setHighlightCreator, cycleColorCreator) ---
+// --- do not use Electron IPC directly and should remain as they are. ---
 
 export const tagActionsCreator = (setPost, action) => {
   return (tag) => {
@@ -126,6 +180,7 @@ export const setHighlightCreator = (post, setPost, savePost) => {
       ...post,
       data: { ...post.data, highlight: highlight },
     }));
+    // savePost is from usePost hook, which now uses Capacitor's saveFile.
     savePost({ highlight: highlight });
   };
 };

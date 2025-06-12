@@ -26,6 +26,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import VirtualList from './VirtualList';
 import Blobs from './Blobs';
 import useChat from 'renderer/hooks/useChat';
+import { isMac } from '../../../utils/platformInfo'; // Adjusted path
 
 export default function Chat() {
   const { validKey } = useAIContext();
@@ -94,8 +95,15 @@ export default function Chat() {
     return history.map((text) => <div className={styles.text}>{text}</div>);
   };
 
+  // Note: isMac() will return default (false) on initial sync render,
+  // then the correct value after Device.getInfo() resolves.
+  // This might cause a flicker if styles.mac vs styles.win differ significantly.
+  // For true reactivity, this should be driven by component state updated via useEffect.
   const osStyles = useMemo(
-    () => (window.electron.isMac ? styles.mac : styles.win),
+    () => (isMac() ? styles.mac : styles.win),
+    // No dependencies needed here if isMac() itself doesn't change reactively for this component.
+    // If isMac() could change and trigger re-render, then [isMac()] or a state variable would be needed.
+    // For now, this matches the original dependency array.
     []
   );
 

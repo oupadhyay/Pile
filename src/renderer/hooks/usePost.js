@@ -51,9 +51,23 @@ function usePost(
 
   useEffect(() => {
     if (!postPath) return;
-    const fullPath = window.electron.joinPath(getCurrentPilePath(), postPath);
-    setPath(fullPath);
-  }, [postPath, currentPile]);
+    // getCurrentPilePath() returns path relative to Directory.Data, or undefined
+    // postPath is relative to pile root
+    const pileRoot = getCurrentPilePath();
+    if (pileRoot === undefined) {
+      setPath(undefined); // Or handle error
+      return;
+    }
+    // Simple path joining, ensuring no double slashes if postPath is empty or pileRoot ends with /
+    let combinedPath = pileRoot;
+    if (postPath) {
+      if (combinedPath && !combinedPath.endsWith('/')) {
+        combinedPath += '/';
+      }
+      combinedPath += postPath.startsWith('/') ? postPath.substring(1) : postPath;
+    }
+    setPath(combinedPath);
+  }, [postPath, currentPile, getCurrentPilePath]);
 
   useEffect(() => {
     if (!path) return;
@@ -98,13 +112,23 @@ function usePost(
           await addReplyToParent(parentPostPath, saveToPath);
         }
 
-        const postRelativePath = saveToPath.replace(
-          getCurrentPilePath() + window.electron.pathSeparator,
-          ''
-        );
+        // saveToPath is relative to Directory.Data (e.g. MyPile/2023/Dec/file.md)
+        // getCurrentPilePath() is the pile's root relative to Directory.Data (e.g. MyPile)
+        const pileRootPath = getCurrentPilePath();
+        let postRelativePath = saveToPath;
+        if (pileRootPath && saveToPath.startsWith(pileRootPath)) {
+          postRelativePath = saveToPath.substring(pileRootPath.length);
+          if (postRelativePath.startsWith('/')) {
+            postRelativePath = postRelativePath.substring(1);
+          }
+        }
+
         prependIndex(postRelativePath, data); // Add the file to the index
         addIndex(postRelativePath, parentPostPath); // Add the file to the index
-        window.electron.ipc.invoke('tags-sync', saveToPath); // Sync tags
+        // 'tags-sync' invoke expects a path that the main process can understand.
+        // If main process also switches to Capacitor paths, this might be okay.
+        // For now, saveToPath (relative to Directory.Data) is passed.
+        window.electron.ipc.invoke('tags-sync', saveToPath);
         console.timeEnd('post-time');
       } catch (error) {
         console.error(`Error writing file: ${saveToPath}`);
@@ -115,10 +139,22 @@ function usePost(
   );
 
   const addReplyToParent = async (parentPostPath, replyPostPath) => {
-    const relativeReplyPath = window.electron.joinPath(
-      ...replyPostPath.split(/[/\\]/).slice(-3)
-    );
+    // replyPostPath is relative to Directory.Data (e.g., MyPile/2023/Dec/file.md)
+    // We need the path relative to the pile root for storing in parent's replies array.
+    const pileRoot = getCurrentPilePath(); // Path to current pile's root, e.g., "MyPile"
+    let relativeReplyPath = replyPostPath;
+    if (pileRoot && replyPostPath.startsWith(pileRoot)) {
+      relativeReplyPath = replyPostPath.substring(pileRoot.length);
+      if (relativeReplyPath.startsWith('/')) {
+        relativeReplyPath = relativeReplyPath.substring(1); // e.g., "2023/Dec/file.md"
+      }
+    }
+
     const fullParentPostPath = getCurrentPilePath(parentPostPath);
+    if (!fullParentPostPath) {
+      console.error("Could not determine parent post path for adding reply.");
+      return;
+    }
     const parentPost = await getPost(fullParentPostPath);
     const content = parentPost.content;
     const data = {

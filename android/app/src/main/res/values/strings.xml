@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Pile</string>
+    <string name="title_activity_main">Pile</string>
+    <string name="package_name">com.pileapp.mobile</string>
+    <string name="custom_url_scheme">com.pileapp.mobile</string>
+</resources>
