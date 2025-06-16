@@ -18,7 +18,20 @@ import AppUpdater from './utils/autoUpdates';
 
 Menu.setApplicationMenu(null);
 
-let mainWindow: BrowserWindow | null = null;
+// Export mainWindow so it can be accessed by other main process modules if necessary
+export let mainWindow: BrowserWindow | null = null;
+
+// Function to send 'index-updated' event to the renderer process
+export function sendIndexUpdatedEventToRenderer() {
+  if (mainWindow) {
+    mainWindow.webContents.send('index-updated');
+    console.log('Sent index-updated event to renderer.');
+  } else {
+    console.error(
+      'Cannot send index-updated event: mainWindow is not available.'
+    );
+  }
+}
 
 if (process.env.NODE_ENV === 'production') {
   const sourceMapSupport = require('source-map-support');

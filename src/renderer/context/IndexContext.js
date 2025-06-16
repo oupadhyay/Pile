@@ -24,6 +24,19 @@ export const IndexContextProvider = ({ children }) => {
     }
   }, [currentPile]);
 
+  // Effect to listen for index-updated events from main process
+  useEffect(() => {
+    const handleIndexUpdated = () => {
+      console.log('Received index-updated event, refreshing index.');
+      refreshIndex();
+    };
+    window.electron.ipc.on('index-updated', handleIndexUpdated);
+
+    return () => {
+      window.electron.ipc.removeListener('index-updated', handleIndexUpdated);
+    };
+  }, [refreshIndex]); // refreshIndex is stable due to useCallback
+
   const loadIndex = useCallback(async (pilePath) => {
     const newIndex = await window.electron.ipc.invoke('index-load', pilePath);
     const newMap = new Map(newIndex);

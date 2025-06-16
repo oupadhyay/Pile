@@ -13,6 +13,7 @@ import {
   useCallback,
 } from 'react';
 import { DateTime } from 'luxon';
+import Store from 'electron-store';
 import { useTimelineContext } from 'renderer/context/TimelineContext';
 import { useIndexContext } from 'renderer/context/IndexContext';
 
@@ -153,22 +154,52 @@ const Timeline = memo(() => {
     useTimelineContext();
   const [parentEntries, setParentEntries] = useState([]);
   const [oldestDate, setOldestDate] = useState(new Date());
+  const store = useRef(new Store()).current; // Use useRef to keep store instance stable
+  const [sortOrder, setSortOrder] = useState(
+    store.get('sortOrder', 'parentPost')
+  );
 
-  //  Extract parent entries
+  // Listen for sortOrder changes
+  useEffect(() => {
+    const unsubscribe = store.onDidChange('sortOrder', (newValue) => {
+      setSortOrder(newValue);
+    });
+    return unsubscribe;
+  }, [store]);
+
+  //  Extract and sort parent entries
   useEffect(() => {
     if (!index) return;
-    const onlyParentEntries = Array.from(index).filter(
+    let onlyParentEntries = Array.from(index).filter(
       ([key, metadata]) => !metadata.isReply
     );
 
-    const lastEntry = onlyParentEntries[onlyParentEntries.length - 1];
-    if (lastEntry) {
-      const lastEntryDate = new Date(lastEntry[1].createdAt);
-      setOldestDate(lastEntryDate);
+    // Sort based on sortOrder
+    if (sortOrder === 'mostRecentMessage') {
+      onlyParentEntries.sort(
+        (a, b) => (b[1].updatedAt || 0) - (a[1].updatedAt || 0)
+      );
+    } else {
+      // Default 'parentPost'
+      onlyParentEntries.sort(
+        (a, b) => (new Date(b[1].createdAt) || 0) - (new Date(a[1].createdAt) || 0)
+      );
+    }
+
+    // Determine oldestDate based on the actual last entry after sorting
+    // For 'parentPost', last entry is oldest. For 'mostRecentMessage', first entry is most recent, last is oldest.
+    const lastEntryForOldestDate = onlyParentEntries[onlyParentEntries.length - 1];
+    if (lastEntryForOldestDate) {
+      // The timeline always progresses from newest (top) to oldest (bottom) visually after sorting.
+      // So, the "oldestDate" for timeline generation purposes should be based on the createdAt of the last item.
+      const oldestEntryTimestamp = lastEntryForOldestDate[1].createdAt;
+      setOldestDate(new Date(oldestEntryTimestamp));
+    } else {
+      setOldestDate(new Date()); // Reset if no entries
     }
 
     setParentEntries(onlyParentEntries);
-  }, [index]);
+  }, [index, sortOrder]);
 
   // Identify most recent entry and it's date
   // This is for placing the scroller at the right position

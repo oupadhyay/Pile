@@ -2,6 +2,7 @@ import styles from './Settings.module.scss';
 import { SettingsIcon, CrossIcon, OllamaIcon } from 'renderer/icons';
 import { useEffect, useState } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
+import Store from 'electron-store';
 import { useAIContext } from 'renderer/context/AIContext';
 import {
   availableThemes,
@@ -9,6 +10,8 @@ import {
 } from 'renderer/context/PilesContext';
 import AISettingTabs from './AISettingsTabs';
 import { useIndexContext } from 'renderer/context/IndexContext';
+
+const store = new Store();
 
 export default function Settings() {
   const { regenerateEmbeddings } = useIndexContext();
@@ -28,6 +31,9 @@ export default function Settings() {
   } = useAIContext();
   const [APIkey, setCurrentKey] = useState('');
   const { currentTheme, setTheme } = usePilesContext();
+  const [sortOrder, setSortOrder] = useState(
+    store.get('sortOrder', 'parentPost')
+  );
 
   const retrieveKey = async () => {
     const k = await getKey();
@@ -37,6 +43,12 @@ export default function Settings() {
   useEffect(() => {
     retrieveKey();
   }, []);
+
+  const handleSortOrderChange = (e) => {
+    const newSortOrder = e.target.value;
+    setSortOrder(newSortOrder);
+    store.set('sortOrder', newSortOrder);
+  };
 
   const handleOnChangeBaseUrl = (e) => {
     setBaseUrl(e.target.value);
@@ -104,6 +116,23 @@ export default function Settings() {
               Appearance
             </label>
             <div className={styles.themes}>{renderThemes()}</div>
+          </fieldset>
+
+          <fieldset className={styles.Fieldset}>
+            <label className={styles.Label} htmlFor="sortOrder">
+              Sort Order
+            </label>
+            <select
+              className={styles.Select}
+              id="sortOrder"
+              value={sortOrder}
+              onChange={handleSortOrderChange}
+            >
+              <option value="parentPost">Sort by parent post</option>
+              <option value="mostRecentMessage">
+                Sort by most recent message
+              </option>
+            </select>
           </fieldset>
 
           <fieldset className={styles.Fieldset}>

@@ -4,6 +4,7 @@ import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Placeholder from '@tiptap/extension-placeholder';
 import { useState, useCallback, useEffect, useMemo, useRef, memo } from 'react';
+import Store from 'electron-store';
 import { useIndexContext } from 'renderer/context/IndexContext';
 import Post from './Post';
 import NewPost from '../NewPost';
@@ -11,35 +12,51 @@ import { AnimatePresence, motion } from 'framer-motion';
 import debounce from 'renderer/utils/debounce';
 import VirtualList from './VirtualList';
 
+const store = new Store();
+
 export default function Posts() {
   const { index, updateIndex } = useIndexContext();
   const [data, setData] = useState([]);
+  const [sortOrder, setSortOrder] = useState(
+    store.get('sortOrder', 'parentPost')
+  );
 
-  // Index is updated when an entry is added/deleted.
+  // Listen for changes in sortOrder from electron-store
+  useEffect(() => {
+    const unsubscribe = store.onDidChange('sortOrder', (newValue) => {
+      setSortOrder(newValue);
+    });
+    return unsubscribe; // Cleanup listener on component unmount
+  }, []);
+
   // We use this to generate the data array which consists of
   // all the items that are going to be rendered on the virtual list.
+  // The actual sorting is now done in main process (pileIndex.js)
   useEffect(() => {
-    const onlyParentEntries = [];
-    const estimatedSize = Math.floor(index.size * 0.7); // Assuming ~70% are parent entries
+    let processedEntries = [];
 
-    onlyParentEntries.length = estimatedSize + 1; // +1 for NewPost
-    let i = 1; // Start at 1 to leave space for NewPost
-
-    for (const [key, metadata] of index) {
-      if (!metadata.isReply) {
-        onlyParentEntries[i] = [key, metadata];
-        i++;
+    if (sortOrder === 'mostRecentMessage') {
+      // For 'mostRecentMessage', use all entries from the index directly,
+      // as they are already sorted by updatedAt by pileIndex.js
+      processedEntries = [...index.entries()];
+    } else {
+      // For 'parentPost' (default), filter for non-reply entries.
+      // These are already sorted by createdAt by pileIndex.js.
+      const parentEntries = [];
+      for (const [key, metadata] of index) {
+        if (!metadata.isReply) {
+          parentEntries.push([key, metadata]);
+        }
       }
+      processedEntries = parentEntries;
     }
 
-    onlyParentEntries[0] = [
-      'NewPost',
-      { height: 150, hash: Date.now().toString() },
+    const finalData = [
+      ['NewPost', { height: 150, hash: Date.now().toString() }],
+      ...processedEntries,
     ];
-    onlyParentEntries.length = i; // Trim any excess pre-allocated space
-
-    setData(onlyParentEntries);
-  }, [index]);
+    setData(finalData);
+  }, [index, sortOrder]);
 
   const renderList = useMemo(() => {
     return <VirtualList data={data} />;

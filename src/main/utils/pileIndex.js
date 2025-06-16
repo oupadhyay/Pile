@@ -1,6 +1,8 @@
 const fs = require('fs');
 const path = require('path');
 const glob = require('glob');
+const Store = require('electron-store');
+const { sendIndexUpdatedEventToRenderer } = require('../main'); // Adjusted path
 const matter = require('gray-matter');
 const pileSearchIndex = require('./pileSearchIndex');
 const pileEmbeddings = require('./pileEmbeddings');
@@ -12,16 +14,53 @@ class PileIndex {
     this.fileName = 'index.json';
     this.pilePath = null;
     this.index = new Map();
+    this.store = new Store();
+
+    this.store.onDidChange('sortOrder', (newValue, oldValue) => {
+      if (newValue !== oldValue) {
+        console.log(
+          'Sort order changed in store, re-sorting index:',
+          newValue
+        );
+        // sortMap will use the new value from the store
+        // save() also calls sortMap() internally before writing.
+        this.save();
+
+        // Actual IPC call
+        if (typeof sendIndexUpdatedEventToRenderer === 'function') {
+          sendIndexUpdatedEventToRenderer();
+        } else {
+          // This case should ideally not happen if the import is correct
+          console.error(
+            'sendIndexUpdatedEventToRenderer function is not available. Check import in pileIndex.js.'
+          );
+        }
+      }
+    });
   }
 
   sortMap(map) {
-    let sortedMap = new Map(
-      [...map.entries()].sort(
-        (a, b) => new Date(b[1].createdAt) - new Date(a[1].createdAt)
-      )
-    );
+    const currentMap = map || this.index; // Use provided map or current index
+    const sortOrder = this.store.get('sortOrder', 'parentPost');
+    let sortedEntries;
 
-    return sortedMap;
+    if (sortOrder === 'mostRecentMessage') {
+      sortedEntries = [...currentMap.entries()].sort(
+        (a, b) => (b[1].updatedAt || 0) - (a[1].updatedAt || 0)
+      );
+    } else {
+      // Default 'parentPost'
+      sortedEntries = [...currentMap.entries()].sort(
+        (a, b) =>
+          (new Date(b[1].createdAt) || 0) - (new Date(a[1].createdAt) || 0)
+      );
+    }
+    // Update the index directly if no map was passed
+    if (!map) {
+      this.index = new Map(sortedEntries);
+      return this.index;
+    }
+    return new Map(sortedEntries);
   }
 
   resetIndex() {
