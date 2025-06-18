@@ -190,7 +190,7 @@ export default function AISettingTabs({ APIkey, setCurrentKey }) {
         <Tabs.Trigger
           className={`${styles.tabsTrigger} ${
             pileAIProvider === 'ollama' ? styles.activeCenter : ''
-          } ${pileAIProvider === 'subscription' ? styles.activeLeft : ''}`}
+          }`}
           value="remote"
         >
           Remote AI
