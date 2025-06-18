@@ -127,6 +127,7 @@
     "lunr": "^2.3.9",
     "luxon": "^3.3.0",
     "openai": "^4.44.0",
+    "prop-types": "^15.8.1",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-markdown": "^9.0.1",
