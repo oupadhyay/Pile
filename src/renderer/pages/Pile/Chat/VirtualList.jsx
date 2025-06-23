@@ -25,37 +25,58 @@ import Message from './Message';
 
 const VirtualList = memo(({ data }) => {
   const virtualListRef = useRef();
+  const dataRef = useRef(data);
 
   useEffect(() => {
-    scrollToBottom();
-  }, [virtualListRef, data]);
+    dataRef.current = data;
+  }, [data]);
 
-  const scrollToBottom = (align = 'end') => {
-    virtualListRef?.current?.scrollToIndex({
-      index: data.length - 1,
-      align,
-    });
-  };
+  // Scroll to bottom when the component mounts or data initially loads to a significant length
+  useEffect(() => {
+    if (dataRef.current && dataRef.current.length > 0) {
+      // Initial scroll to bottom.
+      // The followOutput='smooth' prop should handle subsequent appends.
+      // This explicit scroll might be for initial load or after a full data replacement.
+      scrollToBottom('auto'); // 'auto' might be better for initial load
+    }
+  }, [virtualListRef]); // Only on mount essentially, or if virtualListRef changes.
+
+  const scrollToBottom = useCallback((align = 'end') => {
+    const currentDataLength = dataRef.current ? dataRef.current.length : 0;
+    if (virtualListRef?.current && currentDataLength > 0) {
+      virtualListRef.current.scrollToIndex({
+        index: currentDataLength - 1,
+        align,
+      });
+    }
+  }, []); // Now stable
 
   const renderItem = useCallback(
-    (index, message) => (
+    (index, item) => ( // item is [filePath, metadata]
       <Message
         index={index}
-        message={message}
+        message={item} // Pass the [filePath, metadata] tuple
         scrollToBottom={scrollToBottom}
       />
     ),
-    [data]
+    [scrollToBottom] // Now stable if scrollToBottom is stable
   );
 
-  const getKey = useCallback((index) => `${index}-item`, [data]);
+  // Use the unique file path (item[0]) as the key
+  const computeItemKey = useCallback((index, item) => {
+    if (!item || typeof item[0] !== 'string') {
+      console.warn('Virtuoso item key generation: item or item[0] is invalid', item);
+      return `${index}-invalid-item`; // Fallback key
+    }
+    return item[0]; // item[0] is the filePath
+  }, []); // Stable
 
   return (
     <Virtuoso
       ref={virtualListRef}
-      data={data}
+      data={data} // data is an array of [filePath, metadata]
       itemContent={renderItem}
-      computeItemKey={getKey}
+      computeItemKey={computeItemKey}
       overscan={500}
       initialTopMostItemIndex={data.length - 1}
       followOutput={'smooth'}
