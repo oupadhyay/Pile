@@ -31,30 +31,31 @@ class PileIndex {
     let sortedParentKeys;
 
     if (sortOrder === 'mostRecentMessage') {
-      // Calculate effective updatedAt for each thread (parent + its replies)
-      const threadsWithEffectiveUpdate = parentPostEntries.map(([key, parentMeta]) => {
-        let effectiveUpdatedAt = parentMeta.updatedAt ? new Date(parentMeta.updatedAt).getTime() : 0;
+      // Calculate effective "creation activity" for each thread (parent + its replies)
+      // This means finding the maximum createdAt timestamp within the thread.
+      const threadsWithEffectiveCreation = parentPostEntries.map(([key, parentMeta]) => {
+        let maxCreatedAtInThread = parentMeta.createdAt ? new Date(parentMeta.createdAt).getTime() : 0;
 
         if (parentMeta.replies && parentMeta.replies.length > 0) {
           for (const replyPath of parentMeta.replies) {
             const replyMeta = this.index.get(replyPath);
-            if (replyMeta && replyMeta.updatedAt) {
-              const replyUpdatedAt = new Date(replyMeta.updatedAt).getTime();
-              if (replyUpdatedAt > effectiveUpdatedAt) {
-                effectiveUpdatedAt = replyUpdatedAt;
+            if (replyMeta && replyMeta.createdAt) {
+              const replyCreatedAt = new Date(replyMeta.createdAt).getTime();
+              if (replyCreatedAt > maxCreatedAtInThread) {
+                maxCreatedAtInThread = replyCreatedAt;
               }
             }
           }
         }
-        return { key, effectiveUpdatedAt };
+        return { key, maxCreatedAtInThread };
       });
 
-      // Sort threads by their effective updatedAt
-      threadsWithEffectiveUpdate.sort((a, b) => b.effectiveUpdatedAt - a.effectiveUpdatedAt);
-      sortedParentKeys = threadsWithEffectiveUpdate.map(thread => thread.key);
+      // Sort threads by their maximum createdAt within the thread
+      threadsWithEffectiveCreation.sort((a, b) => b.maxCreatedAtInThread - a.maxCreatedAtInThread);
+      sortedParentKeys = threadsWithEffectiveCreation.map(thread => thread.key);
 
     } else {
-      // Default 'parentPost' sort by createdAt
+      // Default 'parentPost' sort by parent's createdAt
       parentPostEntries.sort(
         (a, b) =>
           (new Date(b[1].createdAt).getTime() || 0) - (new Date(a[1].createdAt).getTime() || 0)
