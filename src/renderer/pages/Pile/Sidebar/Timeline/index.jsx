@@ -13,6 +13,7 @@ import {
   useCallback,
 } from 'react';
 import { DateTime } from 'luxon';
+
 import { useTimelineContext } from 'renderer/context/TimelineContext';
 import { useIndexContext } from 'renderer/context/IndexContext';
 
@@ -35,7 +36,7 @@ const countEntriesByDate = (map, targetDate) => {
       const localDateString = new Date(
         createdAtDate.getFullYear(),
         createdAtDate.getMonth(),
-        createdAtDate.getDate()
+        createdAtDate.getDate(),
       )
         .toISOString()
         .substring(0, 10);
@@ -111,7 +112,7 @@ const WeekComponent = memo(({ startDate, endDate, scrollToDate }) => {
         key={date.toString()}
         date={new Date(date)}
         scrollToDate={scrollToDate}
-      />
+      />,
     );
   }
 
@@ -148,29 +149,47 @@ const WeekComponent = memo(({ startDate, endDate, scrollToDate }) => {
 const Timeline = memo(() => {
   const scrollRef = useRef(null);
   const scrubRef = useRef(null);
-  const { index } = useIndexContext();
+  const { index } = useIndexContext(); // index from context is now a Map, already sorted by main process
   const { visibleIndex, scrollToIndex, closestDate, setClosestDate } =
     useTimelineContext();
-  const [parentEntries, setParentEntries] = useState([]);
+  const [parentEntries, setParentEntries] = useState([]); // Will be an array of [key, metadata]
   const [oldestDate, setOldestDate] = useState(new Date());
+  // No need for local sortOrder state or effect to load it, as sorting is handled by main process
 
-  //  Extract parent entries
+  //  Extract parent entries (they are already sorted from IndexContext)
   useEffect(() => {
-    if (!index) return;
-    const onlyParentEntries = Array.from(index).filter(
-      ([key, metadata]) => !metadata.isReply
-    );
-
-    const lastEntry = onlyParentEntries[onlyParentEntries.length - 1];
-    if (lastEntry) {
-      const lastEntryDate = new Date(lastEntry[1].createdAt);
-      setOldestDate(lastEntryDate);
+    if (!index || index.size === 0) {
+      setParentEntries([]);
+      setOldestDate(new Date());
+      return;
     }
 
-    setParentEntries(onlyParentEntries);
-  }, [index]);
+    // The `index` from IndexContext is a Map. Convert to array and filter non-replies.
+    // The order from `index.entries()` (if it's a Map from `new Map(sortedArray)`) will be preserved.
+    const allEntries = Array.from(index.entries());
+    let onlyParentEntries = allEntries.filter(
+      ([key, metadata]) => !metadata.isReply,
+    );
 
-  // Identify most recent entry and it's date
+    // The `onlyParentEntries` are now already sorted as per the main process logic.
+    // No local re-sorting is needed.
+
+    setParentEntries(onlyParentEntries);
+
+    // Determine oldestDate based on the last entry of the already sorted parentEntries.
+    // The timeline visually goes from newest (top) to oldest (bottom).
+    // So, the last item in `onlyParentEntries` is the one with the oldest `createdAt` for timeline generation.
+    if (onlyParentEntries.length > 0) {
+      const lastEntry = onlyParentEntries[onlyParentEntries.length - 1];
+      // The timeline generation should always be based on `createdAt` for chronological progression.
+      const oldestEntryTimestamp = lastEntry[1].createdAt;
+      setOldestDate(new Date(oldestEntryTimestamp));
+    } else {
+      setOldestDate(new Date()); // Reset if no entries
+    }
+  }, [index]); // Re-run when index from context changes
+
+  // Identify currently visible entry's date for scroller positioning
   // This is for placing the scroller at the right position
   useEffect(() => {
     if (!parentEntries || parentEntries.length == 0) return;
@@ -203,7 +222,7 @@ const Timeline = memo(() => {
         console.error('Failed to scroll to entry', error);
       }
     },
-    [parentEntries]
+    [parentEntries],
   );
 
   const getWeeks = useCallback(() => {
@@ -245,7 +264,9 @@ const Timeline = memo(() => {
       />
     ));
 
-  let weeks = useMemo(createWeeks, [parentEntries.length]);
+  // parentEntries changes when the index (and thus its sort order) changes.
+  // createWeeks -> getWeeks -> oldestDate -> parentEntries -> index
+  let weeks = useMemo(createWeeks, [parentEntries]);
 
   useEffect(() => {
     if (!scrubRef.current) return;

@@ -90,7 +90,7 @@ describe('AIContext', () => {
     expect(context.pileAIProvider).toBe('gemini');
     expect(context.model).toBe('gemini-2.0-flash');
     // baseUrl should remain as the stored value since getProviderBaseUrl returns null for gemini
-    expect(context.baseUrl).toBe('https://api.openai.com/v1');
+    expect(context.baseUrl).toBe('https://generativelanguage.googleapis.com/v1beta/openai/');
     expect(context.ai.type).toBe('gemini');
   });
 

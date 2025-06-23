@@ -1,4 +1,5 @@
 import * as Dialog from '@radix-ui/react-dialog';
+
 import { useEffect, useState } from 'react';
 import { useAIContext } from 'renderer/context/AIContext';
 import {
@@ -14,6 +15,16 @@ export default function Settings() {
     useAIContext();
   const [APIkey, setCurrentKey] = useState('');
   const { currentTheme, setTheme } = usePilesContext();
+  const [sortOrder, setSortOrder] = useState('parentPost');
+
+  // Load sort order from settings on component mount
+  useEffect(() => {
+    const loadSortOrder = async () => {
+      const savedSortOrder = await window.electron.settingsGet('sortOrder');
+      setSortOrder(savedSortOrder || 'parentPost');
+    };
+    loadSortOrder();
+  }, []);
 
   const retrieveKey = async () => {
     const k = await getKey();
@@ -23,6 +34,12 @@ export default function Settings() {
   useEffect(() => {
     retrieveKey();
   });
+
+  const handleSortOrderChange = async (e) => {
+    const newSortOrder = e.target.value;
+    setSortOrder(newSortOrder);
+    await window.electron.settingsSet('sortOrder', newSortOrder);
+  };
 
   const handleOnChangePrompt = (e) => {
     const p = e.target.value ?? '';
@@ -76,13 +93,33 @@ export default function Settings() {
         <Dialog.Overlay className={styles.DialogOverlay} />
         <Dialog.Content className={styles.DialogContent}>
           <Dialog.Title className={styles.DialogTitle}>Settings</Dialog.Title>
-          <fieldset className={styles.Fieldset}>
-            {/* eslint-disable-next-line jsx-a11y/label-has-associated-control */}
-            <label className={styles.Label} htmlFor="appearance">
-              Appearance
-            </label>
-            <div className={styles.themes}>{renderThemes()}</div>
-          </fieldset>
+          <div className={styles.group}>
+            <fieldset className={styles.Fieldset}>
+              {/* eslint-disable-next-line jsx-a11y/label-has-associated-control */}
+              <label className={styles.Label} htmlFor="appearance">
+                Appearance
+              </label>
+              <div className={styles.themes}>{renderThemes()}</div>
+            </fieldset>
+
+            <fieldset className={styles.Fieldset}>
+              {/* eslint-disable-next-line jsx-a11y/label-has-associated-control */}
+              <label className={styles.Label} htmlFor="sortOrder">
+                Sort Order
+              </label>
+              <select
+                className={styles.Select}
+                id="sortOrder"
+                value={sortOrder}
+                onChange={handleSortOrderChange}
+              >
+                <option value="parentPost">Sort by parent post</option>
+                <option value="mostRecentMessage">
+                  Sort by most recent message
+                </option>
+              </select>
+            </fieldset>
+          </div>
 
           <fieldset className={styles.Fieldset}>
             {/* eslint-disable-next-line jsx-a11y/label-has-associated-control */}

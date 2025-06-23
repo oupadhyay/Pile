@@ -11,18 +11,18 @@ ipcMain.handle('index-get', (event) => {
   return index;
 });
 
-ipcMain.handle('index-regenerate-embeddings', (event) => {
-  const index = pileIndex.regenerateEmbeddings();
+ipcMain.handle('index-regenerate-embeddings', async (event) => {
+  const index = await pileIndex.regenerateEmbeddings();
   return index;
 });
 
-ipcMain.handle('index-add', (event, filePath) => {
-  const index = pileIndex.add(filePath);
+ipcMain.handle('index-add', async (event, filePath) => {
+  const index = await pileIndex.add(filePath);
   return index;
 });
 
-ipcMain.handle('index-update', (event, filePath, data) => {
-  const index = pileIndex.update(filePath, data);
+ipcMain.handle('index-update', async (event, filePath, data) => {
+  const index = await pileIndex.update(filePath, data);
   return index;
 });
 
@@ -31,8 +31,8 @@ ipcMain.handle('index-search', (event, query) => {
   return results;
 });
 
-ipcMain.handle('index-vector-search', (event, query, topN = 50) => {
-  const results = pileIndex.vectorSearch(query);
+ipcMain.handle('index-vector-search', async (event, query, topN = 50) => {
+  const results = await pileIndex.vectorSearch(query, topN);
   return results;
 });
 
@@ -46,7 +46,7 @@ ipcMain.handle('index-get-threads-as-text', (event, filePaths = []) => {
   return results;
 });
 
-ipcMain.handle('index-remove', (event, filePath) => {
-  const index = pileIndex.remove(filePath);
+ipcMain.handle('index-remove', async (event, filePath) => {
+  const index = await pileIndex.remove(filePath);
   return index;
 });
