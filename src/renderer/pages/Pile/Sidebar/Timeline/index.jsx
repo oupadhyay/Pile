@@ -149,71 +149,47 @@ const WeekComponent = memo(({ startDate, endDate, scrollToDate }) => {
 const Timeline = memo(() => {
   const scrollRef = useRef(null);
   const scrubRef = useRef(null);
-  const { index } = useIndexContext();
+  const { index } = useIndexContext(); // index from context is now a Map, already sorted by main process
   const { visibleIndex, scrollToIndex, closestDate, setClosestDate } =
     useTimelineContext();
-  const [parentEntries, setParentEntries] = useState([]);
+  const [parentEntries, setParentEntries] = useState([]); // Will be an array of [key, metadata]
   const [oldestDate, setOldestDate] = useState(new Date());
-  const [sortOrder, setSortOrder] = useState('parentPost');
+  // No need for local sortOrder state or effect to load it, as sorting is handled by main process
 
-  // Load sort order from settings and listen for changes
+  //  Extract parent entries (they are already sorted from IndexContext)
   useEffect(() => {
-    const loadSortOrder = async () => {
-      const savedSortOrder = await window.electron.settingsGet('sortOrder');
-      setSortOrder(savedSortOrder || 'parentPost');
-    };
+    if (!index || index.size === 0) {
+      setParentEntries([]);
+      setOldestDate(new Date());
+      return;
+    }
 
-    loadSortOrder();
-
-    // Listen for index updates (which happen when sort order changes)
-    const handleIndexUpdate = () => {
-      loadSortOrder();
-    };
-
-    window.electron.ipc.on('index-updated', handleIndexUpdate);
-
-    return () => {
-      window.electron.ipc.removeListener('index-updated', handleIndexUpdate);
-    };
-  }, []);
-
-  //  Extract and sort parent entries
-  useEffect(() => {
-    if (!index) return;
-    let onlyParentEntries = Array.from(index).filter(
+    // The `index` from IndexContext is a Map. Convert to array and filter non-replies.
+    // The order from `index.entries()` (if it's a Map from `new Map(sortedArray)`) will be preserved.
+    const allEntries = Array.from(index.entries());
+    let onlyParentEntries = allEntries.filter(
       ([key, metadata]) => !metadata.isReply,
     );
 
-    // Sort based on sortOrder
-    if (sortOrder === 'mostRecentMessage') {
-      onlyParentEntries.sort(
-        (a, b) => (b[1].updatedAt || 0) - (a[1].updatedAt || 0),
-      );
-    } else {
-      // Default 'parentPost'
-      onlyParentEntries.sort(
-        (a, b) =>
-          (new Date(b[1].createdAt) || 0) - (new Date(a[1].createdAt) || 0),
-      );
-    }
+    // The `onlyParentEntries` are now already sorted as per the main process logic.
+    // No local re-sorting is needed.
 
-    // Determine oldestDate based on the actual last entry after sorting
-    // For 'parentPost', last entry is oldest. For 'mostRecentMessage', first entry is most recent, last is oldest.
-    const lastEntryForOldestDate =
-      onlyParentEntries[onlyParentEntries.length - 1];
-    if (lastEntryForOldestDate) {
-      // The timeline always progresses from newest (top) to oldest (bottom) visually after sorting.
-      // So, the "oldestDate" for timeline generation purposes should be based on the createdAt of the last item.
-      const oldestEntryTimestamp = lastEntryForOldestDate[1].createdAt;
+    setParentEntries(onlyParentEntries);
+
+    // Determine oldestDate based on the last entry of the already sorted parentEntries.
+    // The timeline visually goes from newest (top) to oldest (bottom).
+    // So, the last item in `onlyParentEntries` is the one with the oldest `createdAt` for timeline generation.
+    if (onlyParentEntries.length > 0) {
+      const lastEntry = onlyParentEntries[onlyParentEntries.length - 1];
+      // The timeline generation should always be based on `createdAt` for chronological progression.
+      const oldestEntryTimestamp = lastEntry[1].createdAt;
       setOldestDate(new Date(oldestEntryTimestamp));
     } else {
       setOldestDate(new Date()); // Reset if no entries
     }
+  }, [index]); // Re-run when index from context changes
 
-    setParentEntries(onlyParentEntries);
-  }, [index, sortOrder]);
-
-  // Identify most recent entry and it's date
+  // Identify currently visible entry's date for scroller positioning
   // This is for placing the scroller at the right position
   useEffect(() => {
     if (!parentEntries || parentEntries.length == 0) return;
@@ -288,7 +264,9 @@ const Timeline = memo(() => {
       />
     ));
 
-  let weeks = useMemo(createWeeks, [parentEntries, sortOrder]);
+  // parentEntries changes when the index (and thus its sort order) changes.
+  // createWeeks -> getWeeks -> oldestDate -> parentEntries -> index
+  let weeks = useMemo(createWeeks, [parentEntries]);
 
   useEffect(() => {
     if (!scrubRef.current) return;

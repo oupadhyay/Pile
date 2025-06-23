@@ -14,40 +14,39 @@ class PileIndex {
     this.fileName = 'index.json';
     this.pilePath = null;
     this.index = new Map();
+    this.sortedIndexKeys = []; // Stores sorted keys
   }
 
-  async sortMap(map) {
-    const currentMap = map || this.index; // Use provided map or current index
+  async sortMap() {
     const sortOrder = (await settings.get('sortOrder')) || 'parentPost';
-    let sortedEntries;
+    let sortedKeys;
+
+    const entries = Array.from(this.index.entries());
 
     if (sortOrder === 'mostRecentMessage') {
-      sortedEntries = [...currentMap.entries()].sort(
-        (a, b) => (b[1].updatedAt || 0) - (a[1].updatedAt || 0),
-      );
+      sortedKeys = entries
+        .sort((a, b) => (b[1].updatedAt || 0) - (a[1].updatedAt || 0))
+        .map(([key]) => key);
     } else {
       // Default 'parentPost'
-      sortedEntries = [...currentMap.entries()].sort(
-        (a, b) =>
-          (new Date(b[1].createdAt) || 0) - (new Date(a[1].createdAt) || 0),
-      );
+      sortedKeys = entries
+        .sort(
+          (a, b) =>
+            (new Date(b[1].createdAt) || 0) - (new Date(a[1].createdAt) || 0),
+        )
+        .map(([key]) => key);
     }
-    // Update the index directly if no map was passed
-    if (!map) {
-      this.index = new Map(sortedEntries);
-      return this.index;
-    }
-    return new Map(sortedEntries);
+    this.sortedIndexKeys = sortedKeys;
   }
 
   resetIndex() {
     this.index.clear();
+    this.sortedIndexKeys = [];
   }
 
   async load(pilePath) {
     if (!pilePath) return;
 
-    // a different pile is being loaded
     if (pilePath !== this.pilePath) {
       this.resetIndex();
     }
@@ -57,37 +56,35 @@ class PileIndex {
 
     if (fs.existsSync(indexFilePath)) {
       const data = fs.readFileSync(indexFilePath);
-      const loadedIndex = new Map(JSON.parse(data));
-      const sortedIndex = await this.sortMap(loadedIndex);
-      this.index = sortedIndex;
+      this.index = new Map(JSON.parse(data));
+      // index.json is pre-sorted, but sortedIndexKeys needs to be built based on current app settings.
+      await this.sortMap();
     } else {
-      // init empty index
-      await this.save();
-      // try to recreate index by walking the folder system
-      const index = await this.walkAndGenerateIndex(pilePath);
-      this.index = index;
-      await this.save();
+      // No index.json, so walk dirs, build index, sort keys, and save the new index.json.
+      await this.walkAndGenerateIndex(pilePath); // Populates this.index
+      await this.sortMap();                     // Populates this.sortedIndexKeys
+      await this.save();                         // Saves this.index (sorted) to index.json
     }
 
+    // Initialize search and embeddings with the final state of this.index
     pileSearchIndex.initialize(this.pilePath, this.index);
     console.log('📍 SEARCH INDEX LOADED');
     await pileEmbeddings.initialize(this.pilePath, this.index);
     console.log('📍 VECTOR INDEX LOADED');
 
-    return this.index;
+    return this.get(); // Return the sorted view
   }
 
   walkAndGenerateIndex = async (pilePath) => {
     const files = await walk(pilePath);
+    this.index.clear(); // Ensure index is empty before populating
     files.forEach((filePath) => {
       const relativeFilePath = path.relative(pilePath, filePath);
       const fileContent = fs.readFileSync(filePath, 'utf8');
       const { data } = matter(fileContent);
       this.index.set(relativeFilePath, data);
     });
-
-    this.index = await this.sortMap(this.index);
-    return this.index;
+    // this.index is now populated. sortMap and save will be called by the 'load' method.
   };
 
   search(query) {
@@ -124,12 +121,16 @@ class PileIndex {
   }
 
   get() {
-    const result = Array.from(this.index.entries());
+    // Return entries in the order of sortedIndexKeys
+    const result = this.sortedIndexKeys.map((key) => [
+      key,
+      this.index.get(key),
+    ]);
     console.log(
-      'get() method called, returning array with length:',
+      'get() method called, returning sorted array with length:',
       result.length,
     );
-    console.log('First entry:', result[0]);
+    // console.log('First entry in sorted get():', result[0]); // Be careful if result can be empty
     return result;
   }
 
@@ -139,10 +140,11 @@ class PileIndex {
     const { data, content } = matter(fileContent);
     this.index.set(relativeFilePath, data);
     // add to search and vector index
-    pileSearchIndex.initialize(this.pilePath, this.index);
+    pileSearchIndex.initialize(this.pilePath, this.index); // Reinitialize search index
     pileEmbeddings.addDocument(relativeFilePath, data);
+    await this.sortMap(); // Update sortedIndexKeys
     await this.save();
-    return this.index;
+    return this.get(); // Return sorted view
   }
 
   getThreadAsText(filePath) {
@@ -198,24 +200,30 @@ class PileIndex {
   }
 
   async regenerateEmbeddings() {
-    pileEmbeddings.regenerateEmbeddings(this.index);
-    await this.save();
+    // This operation might affect embeddings but not sorting order directly.
+    // If it modifies metadata used for sorting (e.g. updatedAt), then sortMap and save should be called.
+    // For now, assuming it doesn't change sortable metadata.
+    pileEmbeddings.regenerateEmbeddings(this.index); // Operates on the raw index
+    // No need to re-sort or save unless metadata used for sorting changes.
     return;
   }
 
   async update(relativeFilePath, data) {
     this.index.set(relativeFilePath, data);
-    pileSearchIndex.initialize(this.pilePath, this.index);
-    pileEmbeddings.addDocument(relativeFilePath, data);
+    pileSearchIndex.initialize(this.pilePath, this.index); // Rebuilds search index
+    pileEmbeddings.addDocument(relativeFilePath, data); // Updates vector index
+    await this.sortMap(); // Update sortedIndexKeys
     await this.save();
-    return this.index;
+    return this.get(); // Return sorted view
   }
 
   async remove(relativeFilePath) {
     this.index.delete(relativeFilePath);
+    pileSearchIndex.initialize(this.pilePath, this.index); // Rebuilds search index
+    // TODO: pileEmbeddings.removeDocument(relativeFilePath); // Assuming a method to remove from vector index
+    await this.sortMap(); // Update sortedIndexKeys
     await this.save();
-
-    return this.index;
+    return this.get(); // Return sorted view
   }
 
   async save() {
@@ -224,33 +232,47 @@ class PileIndex {
       fs.mkdirSync(this.pilePath, { recursive: true });
     }
 
-    const sortedIndex = await this.sortMap(this.index);
-    this.index = sortedIndex;
+    // Create a temporary map sorted according to the current sortOrder for saving.
+    // This ensures index.json is always saved in a consistent, sorted manner.
+    const sortOrderForSaving = (await settings.get('sortOrder')) || 'parentPost';
+    let sortedEntriesForSaving;
+    const currentEntries = Array.from(this.index.entries());
+
+    if (sortOrderForSaving === 'mostRecentMessage') {
+      sortedEntriesForSaving = currentEntries.sort(
+        (a, b) => (b[1].updatedAt || 0) - (a[1].updatedAt || 0),
+      );
+    } else {
+      // Default 'parentPost'
+      sortedEntriesForSaving = currentEntries.sort(
+        (a, b) =>
+          (new Date(b[1].createdAt) || 0) - (new Date(a[1].createdAt) || 0),
+      );
+    }
+    const sortedIndexForSaving = new Map(sortedEntriesForSaving);
+
     const filePath = path.join(this.pilePath, this.fileName);
-    const entries = this.index.entries();
-
-    if (!entries) return;
-
-    const strMap = JSON.stringify(Array.from(entries));
+    const strMap = JSON.stringify(Array.from(sortedIndexForSaving.entries()));
     fs.writeFileSync(filePath, strMap);
   }
 
   async refreshSort() {
     console.log(
-      'refreshSort called - before save, index size:',
+      'refreshSort called - index size before sortMap:',
       this.index.size,
     );
-    await this.save();
+    await this.sortMap(); // Update sortedIndexKeys
+    await this.save(); // Save the potentially re-sorted main index to disk
     console.log(
-      'refreshSort called - after save, index size:',
+      'refreshSort called - index size after save:',
       this.index.size,
     );
 
-    // Log first few entries to see the order
-    const entries = Array.from(this.index.entries()).slice(0, 3);
+    // Log first few entries from the sorted view to see the order
+    const sortedView = this.get().slice(0, 3);
     console.log(
-      'First 3 entries after refreshSort:',
-      entries.map(([key, meta]) => ({
+      'First 3 entries after refreshSort (from get()):',
+      sortedView.map(([key, meta]) => ({
         key,
         createdAt: meta.createdAt,
         updatedAt: meta.updatedAt,
