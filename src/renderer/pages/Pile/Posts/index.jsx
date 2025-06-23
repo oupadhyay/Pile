@@ -40,34 +40,25 @@ export default function Posts() {
 
   // We use this to generate the data array which consists of
   // all the items that are going to be rendered on the virtual list.
-  // The actual sorting is now done in main process (pileIndex.js)
+  // The `index` from useIndexContext() is ALREADY:
+  // 1. Filtered to include only parent posts.
+  // 2. Sorted according to the global 'sortOrder' setting by PileIndex.js.
   useEffect(() => {
-    let processedEntries = [];
+    const processedEntries = [...index.entries()]; // Already sorted parent posts
 
-    if (sortOrder === 'mostRecentMessage') {
-      // For 'mostRecentMessage', use all entries from the index directly,
-      // as they are already sorted by updatedAt by pileIndex.js
-      processedEntries = [...index.entries()];
-    } else {
-      // For 'parentPost' (default), filter for non-reply entries.
-      // These are already sorted by createdAt by pileIndex.js.
-      const parentEntries = [];
-      for (const [key, metadata] of index) {
-        if (!metadata.isReply) {
-          parentEntries.push([key, metadata]);
-        }
-      }
-      processedEntries = parentEntries;
-    }
-
+    // Add a stable placeholder for the NewPost component.
+    // This placeholder will be identified by Posts/VirtualList.jsx to render the NewPost component.
     const finalData = [
-      ['NewPost', { height: 150, hash: Date.now().toString() }],
+      ['new-post-placeholder-key', { type: 'NEW_POST_COMPONENT' }],
       ...processedEntries,
     ];
     setData(finalData);
-  }, [index, sortOrder]);
+  }, [index]); // Only depends on index, as index changes when sortOrder or content changes.
 
   const renderList = useMemo(() => {
+    // Using sortOrder as key can help ensure Virtuoso remounts if its internal state
+    // doesn't perfectly handle data source changes that also imply new visual orderings.
+    // With robust computeItemKey in VirtualList, this might be optional but acts as a safeguard.
     return <VirtualList key={sortOrder} data={data} />;
   }, [data, sortOrder]);
 

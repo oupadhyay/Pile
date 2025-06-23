@@ -32,25 +32,35 @@ const VirtualTimeline = memo(({ data }) => {
   }, [setVisibleIndex]);
 
   const renderItem = useCallback((index, entry) => {
-    // Only render NewPost at the very top
-    if (index === 0) {
+    // entry is [key, payload] from the data array
+    // Check if this is the placeholder for NewPost
+    if (entry && entry[0] === 'new-post-placeholder-key') {
       return <MemoizedNewPost />;
     }
 
+    // For actual posts, entry is [postPath, postMetadata]
     const [postPath, post] = entry;
-    return (
-      <PostItem
-        postPath={postPath}
-        post={post}
-      />
-    );
-  }, []);
+    return <PostItem postPath={postPath} post={post} />;
+  }, []); // Stable callback
 
   const getKey = useCallback((index, entry) => {
-    if (index === 0) return 'new-post';
-    const [postPath, post] = entry;
-    return `${postPath}-${post.updatedAt}`;
-  }, []);
+    // entry is [key, payload]
+    // Check for the NewPost placeholder
+    if (entry && entry[0] === 'new-post-placeholder-key') {
+      return 'new-post-placeholder-key'; // Static key for the placeholder
+    }
+
+    // For actual posts, entry[0] is the postPath. This is the most stable key.
+    // Using post.updatedAt here (entry[1].updatedAt) might cause unnecessary remounts if PostItem can handle updates.
+    // For maximum stability for Virtuoso's item tracking during sorts, postPath alone is best.
+    if (entry && typeof entry[0] === 'string') {
+      return entry[0]; // Use postPath (entry[0]) as the stable key
+    }
+
+    // Fallback key if entry structure is unexpected for some reason
+    console.warn("Unexpected entry structure in getKey:", entry);
+    return `item-${index}`;
+  }, []); // Stable callback
 
   return (
     <Virtuoso
@@ -58,7 +68,7 @@ const VirtualTimeline = memo(({ data }) => {
       data={data}
       rangeChanged={handleRangeChanged}
       itemContent={renderItem}
-      computeItemKey={getKey}
+      computeItemKey={getKey} // Use the updated getKey
       components={{
         Scroller: Scrollbar
       }}

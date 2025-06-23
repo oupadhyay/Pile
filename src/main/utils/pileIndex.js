@@ -19,24 +19,49 @@ class PileIndex {
 
   async sortMap() {
     const sortOrder = (await settings.get('sortOrder')) || 'parentPost';
-    let sortedKeys;
+    let parentPostEntries = [];
 
-    const entries = Array.from(this.index.entries());
+    // First, gather all actual parent post entries
+    for (const [key, meta] of this.index) {
+      if (!meta.isReply) {
+        parentPostEntries.push([key, meta]);
+      }
+    }
+
+    let sortedParentKeys;
 
     if (sortOrder === 'mostRecentMessage') {
-      sortedKeys = entries
-        .sort((a, b) => (b[1].updatedAt || 0) - (a[1].updatedAt || 0))
-        .map(([key]) => key);
+      // Calculate effective updatedAt for each thread (parent + its replies)
+      const threadsWithEffectiveUpdate = parentPostEntries.map(([key, parentMeta]) => {
+        let effectiveUpdatedAt = parentMeta.updatedAt ? new Date(parentMeta.updatedAt).getTime() : 0;
+
+        if (parentMeta.replies && parentMeta.replies.length > 0) {
+          for (const replyPath of parentMeta.replies) {
+            const replyMeta = this.index.get(replyPath);
+            if (replyMeta && replyMeta.updatedAt) {
+              const replyUpdatedAt = new Date(replyMeta.updatedAt).getTime();
+              if (replyUpdatedAt > effectiveUpdatedAt) {
+                effectiveUpdatedAt = replyUpdatedAt;
+              }
+            }
+          }
+        }
+        return { key, effectiveUpdatedAt };
+      });
+
+      // Sort threads by their effective updatedAt
+      threadsWithEffectiveUpdate.sort((a, b) => b.effectiveUpdatedAt - a.effectiveUpdatedAt);
+      sortedParentKeys = threadsWithEffectiveUpdate.map(thread => thread.key);
+
     } else {
-      // Default 'parentPost'
-      sortedKeys = entries
-        .sort(
-          (a, b) =>
-            (new Date(b[1].createdAt) || 0) - (new Date(a[1].createdAt) || 0),
-        )
-        .map(([key]) => key);
+      // Default 'parentPost' sort by createdAt
+      parentPostEntries.sort(
+        (a, b) =>
+          (new Date(b[1].createdAt).getTime() || 0) - (new Date(a[1].createdAt).getTime() || 0)
+      );
+      sortedParentKeys = parentPostEntries.map(([key]) => key);
     }
-    this.sortedIndexKeys = sortedKeys;
+    this.sortedIndexKeys = sortedParentKeys;
   }
 
   resetIndex() {
@@ -232,27 +257,18 @@ class PileIndex {
       fs.mkdirSync(this.pilePath, { recursive: true });
     }
 
-    // Create a temporary map sorted according to the current sortOrder for saving.
-    // This ensures index.json is always saved in a consistent, sorted manner.
-    const sortOrderForSaving = (await settings.get('sortOrder')) || 'parentPost';
-    let sortedEntriesForSaving;
-    const currentEntries = Array.from(this.index.entries());
+    // Sort all entries in this.index by their 'createdAt' timestamp for consistent saving.
+    // This ensures index.json has a predictable order and contains all data (parents and replies).
+    // The dynamic thread-based sorting for display is handled by sortedIndexKeys.
+    const allEntries = Array.from(this.index.entries());
+    allEntries.sort(
+      (a, b) =>
+        (new Date(b[1].createdAt).getTime() || 0) - (new Date(a[1].createdAt).getTime() || 0)
+    );
 
-    if (sortOrderForSaving === 'mostRecentMessage') {
-      sortedEntriesForSaving = currentEntries.sort(
-        (a, b) => (b[1].updatedAt || 0) - (a[1].updatedAt || 0),
-      );
-    } else {
-      // Default 'parentPost'
-      sortedEntriesForSaving = currentEntries.sort(
-        (a, b) =>
-          (new Date(b[1].createdAt) || 0) - (new Date(a[1].createdAt) || 0),
-      );
-    }
-    const sortedIndexForSaving = new Map(sortedEntriesForSaving);
-
+    const indexToSave = new Map(allEntries);
     const filePath = path.join(this.pilePath, this.fileName);
-    const strMap = JSON.stringify(Array.from(sortedIndexForSaving.entries()));
+    const strMap = JSON.stringify(Array.from(indexToSave.entries()));
     fs.writeFileSync(filePath, strMap);
   }
 
