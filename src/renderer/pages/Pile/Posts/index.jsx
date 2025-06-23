@@ -4,7 +4,7 @@ import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Placeholder from '@tiptap/extension-placeholder';
 import { useState, useCallback, useEffect, useMemo, useRef, memo } from 'react';
-import Store from 'electron-store';
+
 import { useIndexContext } from 'renderer/context/IndexContext';
 import Post from './Post';
 import NewPost from '../NewPost';
@@ -12,21 +12,30 @@ import { AnimatePresence, motion } from 'framer-motion';
 import debounce from 'renderer/utils/debounce';
 import VirtualList from './VirtualList';
 
-const store = new Store();
-
 export default function Posts() {
   const { index, updateIndex } = useIndexContext();
   const [data, setData] = useState([]);
-  const [sortOrder, setSortOrder] = useState(
-    store.get('sortOrder', 'parentPost')
-  );
+  const [sortOrder, setSortOrder] = useState('parentPost');
 
-  // Listen for changes in sortOrder from electron-store
+  // Load sort order from settings and listen for index updates
   useEffect(() => {
-    const unsubscribe = store.onDidChange('sortOrder', (newValue) => {
-      setSortOrder(newValue);
-    });
-    return unsubscribe; // Cleanup listener on component unmount
+    const loadSortOrder = async () => {
+      const savedSortOrder = await window.electron.settingsGet('sortOrder');
+      setSortOrder(savedSortOrder || 'parentPost');
+    };
+
+    loadSortOrder();
+
+    // Listen for index updates (which happen when sort order changes)
+    const handleIndexUpdate = () => {
+      loadSortOrder();
+    };
+
+    window.electron.ipc.on('index-updated', handleIndexUpdate);
+
+    return () => {
+      window.electron.ipc.removeListener('index-updated', handleIndexUpdate);
+    };
   }, []);
 
   // We use this to generate the data array which consists of
@@ -59,8 +68,8 @@ export default function Posts() {
   }, [index, sortOrder]);
 
   const renderList = useMemo(() => {
-    return <VirtualList data={data} />;
-  }, [data]);
+    return <VirtualList key={sortOrder} data={data} />;
+  }, [data, sortOrder]);
 
   // When there are zero entries
   if (index.size == 0) {

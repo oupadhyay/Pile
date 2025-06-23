@@ -13,7 +13,7 @@ import {
   useCallback,
 } from 'react';
 import { DateTime } from 'luxon';
-import Store from 'electron-store';
+
 import { useTimelineContext } from 'renderer/context/TimelineContext';
 import { useIndexContext } from 'renderer/context/IndexContext';
 
@@ -36,7 +36,7 @@ const countEntriesByDate = (map, targetDate) => {
       const localDateString = new Date(
         createdAtDate.getFullYear(),
         createdAtDate.getMonth(),
-        createdAtDate.getDate()
+        createdAtDate.getDate(),
       )
         .toISOString()
         .substring(0, 10);
@@ -112,7 +112,7 @@ const WeekComponent = memo(({ startDate, endDate, scrollToDate }) => {
         key={date.toString()}
         date={new Date(date)}
         scrollToDate={scrollToDate}
-      />
+      />,
     );
   }
 
@@ -154,41 +154,53 @@ const Timeline = memo(() => {
     useTimelineContext();
   const [parentEntries, setParentEntries] = useState([]);
   const [oldestDate, setOldestDate] = useState(new Date());
-  const store = useRef(new Store()).current; // Use useRef to keep store instance stable
-  const [sortOrder, setSortOrder] = useState(
-    store.get('sortOrder', 'parentPost')
-  );
+  const [sortOrder, setSortOrder] = useState('parentPost');
 
-  // Listen for sortOrder changes
+  // Load sort order from settings and listen for changes
   useEffect(() => {
-    const unsubscribe = store.onDidChange('sortOrder', (newValue) => {
-      setSortOrder(newValue);
-    });
-    return unsubscribe;
-  }, [store]);
+    const loadSortOrder = async () => {
+      const savedSortOrder = await window.electron.settingsGet('sortOrder');
+      setSortOrder(savedSortOrder || 'parentPost');
+    };
+
+    loadSortOrder();
+
+    // Listen for index updates (which happen when sort order changes)
+    const handleIndexUpdate = () => {
+      loadSortOrder();
+    };
+
+    window.electron.ipc.on('index-updated', handleIndexUpdate);
+
+    return () => {
+      window.electron.ipc.removeListener('index-updated', handleIndexUpdate);
+    };
+  }, []);
 
   //  Extract and sort parent entries
   useEffect(() => {
     if (!index) return;
     let onlyParentEntries = Array.from(index).filter(
-      ([key, metadata]) => !metadata.isReply
+      ([key, metadata]) => !metadata.isReply,
     );
 
     // Sort based on sortOrder
     if (sortOrder === 'mostRecentMessage') {
       onlyParentEntries.sort(
-        (a, b) => (b[1].updatedAt || 0) - (a[1].updatedAt || 0)
+        (a, b) => (b[1].updatedAt || 0) - (a[1].updatedAt || 0),
       );
     } else {
       // Default 'parentPost'
       onlyParentEntries.sort(
-        (a, b) => (new Date(b[1].createdAt) || 0) - (new Date(a[1].createdAt) || 0)
+        (a, b) =>
+          (new Date(b[1].createdAt) || 0) - (new Date(a[1].createdAt) || 0),
       );
     }
 
     // Determine oldestDate based on the actual last entry after sorting
     // For 'parentPost', last entry is oldest. For 'mostRecentMessage', first entry is most recent, last is oldest.
-    const lastEntryForOldestDate = onlyParentEntries[onlyParentEntries.length - 1];
+    const lastEntryForOldestDate =
+      onlyParentEntries[onlyParentEntries.length - 1];
     if (lastEntryForOldestDate) {
       // The timeline always progresses from newest (top) to oldest (bottom) visually after sorting.
       // So, the "oldestDate" for timeline generation purposes should be based on the createdAt of the last item.
@@ -234,7 +246,7 @@ const Timeline = memo(() => {
         console.error('Failed to scroll to entry', error);
       }
     },
-    [parentEntries]
+    [parentEntries],
   );
 
   const getWeeks = useCallback(() => {
@@ -276,7 +288,7 @@ const Timeline = memo(() => {
       />
     ));
 
-  let weeks = useMemo(createWeeks, [parentEntries.length]);
+  let weeks = useMemo(createWeeks, [parentEntries, sortOrder]);
 
   useEffect(() => {
     if (!scrubRef.current) return;

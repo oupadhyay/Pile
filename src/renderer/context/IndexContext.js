@@ -10,12 +10,48 @@ import { usePilesContext } from './PilesContext';
 
 export const IndexContext = createContext();
 
-export const IndexContextProvider = ({ children }) => {
+export function IndexContextProvider({ children }) {
   const { currentPile, getCurrentPilePath } = usePilesContext();
   const [filters, setFilters] = useState();
   const [searchOpen, setSearchOpen] = useState(false);
   const [index, setIndex] = useState(new Map());
   const [latestThreads, setLatestThreads] = useState([]);
+
+  const loadIndex = useCallback(async (pilePath) => {
+    const newIndex = await window.electron.ipc.invoke('index-load', pilePath);
+    const newMap = new Map(newIndex);
+    setIndex(newMap);
+  }, []);
+
+  const refreshIndex = useCallback(async () => {
+    console.log('refreshIndex called in renderer');
+    const newIndex = await window.electron.ipc.invoke('index-get');
+    console.log(
+      'Received new index from main process, type:',
+      typeof newIndex,
+      'value:',
+      newIndex,
+    );
+
+    // Log first few entries to see the order
+    if (Array.isArray(newIndex)) {
+      const entries = newIndex.slice(0, 3);
+      console.log(
+        'First 3 entries from main process:',
+        entries.map(([key, meta]) => ({
+          key,
+          createdAt: meta.createdAt,
+          updatedAt: meta.updatedAt,
+        })),
+      );
+    } else {
+      console.log('newIndex is not an array, its type is:', typeof newIndex);
+    }
+
+    const newMap = new Map(newIndex);
+    setIndex(newMap);
+    console.log('Index state updated in renderer');
+  }, []);
 
   useEffect(() => {
     if (currentPile) {
@@ -37,20 +73,8 @@ export const IndexContextProvider = ({ children }) => {
     };
   }, [refreshIndex]); // refreshIndex is stable due to useCallback
 
-  const loadIndex = useCallback(async (pilePath) => {
-    const newIndex = await window.electron.ipc.invoke('index-load', pilePath);
-    const newMap = new Map(newIndex);
-    setIndex(newMap);
-  }, []);
-
-  const refreshIndex = useCallback(async () => {
-    const newIndex = await window.electron.ipc.invoke('index-get');
-    const newMap = new Map(newIndex);
-    setIndex(newMap);
-  }, []);
-
   const prependIndex = useCallback((key, value) => {
-    console.log('prepend index', key, value)
+    console.log('prepend index', key, value);
     setIndex((prevIndex) => {
       const newIndex = new Map([[key, value], ...prevIndex]);
       return newIndex;
@@ -63,14 +87,14 @@ export const IndexContextProvider = ({ children }) => {
       const pilePath = getCurrentPilePath();
 
       await window.electron.ipc
-      .invoke('index-add', newEntryPath)
-      .then((index) => {
-        // setIndex(index);
-        loadLatestThreads();
-      });
+        .invoke('index-add', newEntryPath)
+        .then((index) => {
+          // setIndex(index);
+          loadLatestThreads();
+        });
       console.timeEnd('index-add-time');
     },
-    [currentPile]
+    [currentPile],
   );
 
   const regenerateEmbeddings = () => {
@@ -125,7 +149,7 @@ export const IndexContextProvider = ({ children }) => {
     getThreadsAsText,
     latestThreads,
     regenerateEmbeddings,
-    prependIndex
+    prependIndex,
   };
 
   return (
@@ -133,6 +157,6 @@ export const IndexContextProvider = ({ children }) => {
       {children}
     </IndexContext.Provider>
   );
-};
+}
 
 export const useIndexContext = () => useContext(IndexContext);

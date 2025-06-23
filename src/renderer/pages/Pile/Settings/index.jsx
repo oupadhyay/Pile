@@ -2,7 +2,7 @@ import styles from './Settings.module.scss';
 import { SettingsIcon, CrossIcon, OllamaIcon } from 'renderer/icons';
 import { useEffect, useState } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
-import Store from 'electron-store';
+
 import { useAIContext } from 'renderer/context/AIContext';
 import {
   availableThemes,
@@ -10,8 +10,6 @@ import {
 } from 'renderer/context/PilesContext';
 import AISettingTabs from './AISettingsTabs';
 import { useIndexContext } from 'renderer/context/IndexContext';
-
-const store = new Store();
 
 export default function Settings() {
   const { regenerateEmbeddings } = useIndexContext();
@@ -31,9 +29,16 @@ export default function Settings() {
   } = useAIContext();
   const [APIkey, setCurrentKey] = useState('');
   const { currentTheme, setTheme } = usePilesContext();
-  const [sortOrder, setSortOrder] = useState(
-    store.get('sortOrder', 'parentPost')
-  );
+  const [sortOrder, setSortOrder] = useState('parentPost');
+
+  // Load sort order from settings on component mount
+  useEffect(() => {
+    const loadSortOrder = async () => {
+      const savedSortOrder = await window.electron.settingsGet('sortOrder');
+      setSortOrder(savedSortOrder || 'parentPost');
+    };
+    loadSortOrder();
+  }, []);
 
   const retrieveKey = async () => {
     const k = await getKey();
@@ -44,10 +49,10 @@ export default function Settings() {
     retrieveKey();
   }, []);
 
-  const handleSortOrderChange = (e) => {
+  const handleSortOrderChange = async (e) => {
     const newSortOrder = e.target.value;
     setSortOrder(newSortOrder);
-    store.set('sortOrder', newSortOrder);
+    await window.electron.settingsSet('sortOrder', newSortOrder);
   };
 
   const handleOnChangeBaseUrl = (e) => {

@@ -1,9 +1,9 @@
 const fs = require('fs');
 const path = require('path');
 const glob = require('glob');
-const Store = require('electron-store');
-const { sendIndexUpdatedEventToRenderer } = require('../main'); // Adjusted path
+const settings = require('electron-settings');
 const matter = require('gray-matter');
+const { sendIndexUpdatedEventToRenderer } = require('../main'); // Adjusted path
 const pileSearchIndex = require('./pileSearchIndex');
 const pileEmbeddings = require('./pileEmbeddings');
 const { walk } = require('../util');
@@ -14,45 +14,22 @@ class PileIndex {
     this.fileName = 'index.json';
     this.pilePath = null;
     this.index = new Map();
-    this.store = new Store();
-
-    this.store.onDidChange('sortOrder', (newValue, oldValue) => {
-      if (newValue !== oldValue) {
-        console.log(
-          'Sort order changed in store, re-sorting index:',
-          newValue
-        );
-        // sortMap will use the new value from the store
-        // save() also calls sortMap() internally before writing.
-        this.save();
-
-        // Actual IPC call
-        if (typeof sendIndexUpdatedEventToRenderer === 'function') {
-          sendIndexUpdatedEventToRenderer();
-        } else {
-          // This case should ideally not happen if the import is correct
-          console.error(
-            'sendIndexUpdatedEventToRenderer function is not available. Check import in pileIndex.js.'
-          );
-        }
-      }
-    });
   }
 
-  sortMap(map) {
+  async sortMap(map) {
     const currentMap = map || this.index; // Use provided map or current index
-    const sortOrder = this.store.get('sortOrder', 'parentPost');
+    const sortOrder = (await settings.get('sortOrder')) || 'parentPost';
     let sortedEntries;
 
     if (sortOrder === 'mostRecentMessage') {
       sortedEntries = [...currentMap.entries()].sort(
-        (a, b) => (b[1].updatedAt || 0) - (a[1].updatedAt || 0)
+        (a, b) => (b[1].updatedAt || 0) - (a[1].updatedAt || 0),
       );
     } else {
       // Default 'parentPost'
       sortedEntries = [...currentMap.entries()].sort(
         (a, b) =>
-          (new Date(b[1].createdAt) || 0) - (new Date(a[1].createdAt) || 0)
+          (new Date(b[1].createdAt) || 0) - (new Date(a[1].createdAt) || 0),
       );
     }
     // Update the index directly if no map was passed
@@ -81,15 +58,15 @@ class PileIndex {
     if (fs.existsSync(indexFilePath)) {
       const data = fs.readFileSync(indexFilePath);
       const loadedIndex = new Map(JSON.parse(data));
-      const sortedIndex = this.sortMap(loadedIndex);
+      const sortedIndex = await this.sortMap(loadedIndex);
       this.index = sortedIndex;
     } else {
       // init empty index
-      this.save();
+      await this.save();
       // try to recreate index by walking the folder system
       const index = await this.walkAndGenerateIndex(pilePath);
       this.index = index;
-      this.save();
+      await this.save();
     }
 
     pileSearchIndex.initialize(this.pilePath, this.index);
@@ -100,18 +77,17 @@ class PileIndex {
     return this.index;
   }
 
-  walkAndGenerateIndex = (pilePath) => {
-    return walk(pilePath).then((files) => {
-      files.forEach((filePath) => {
-        const relativeFilePath = path.relative(pilePath, filePath);
-        const fileContent = fs.readFileSync(filePath, 'utf8');
-        const { data } = matter(fileContent);
-        this.index.set(relativeFilePath, data);
-      });
-
-      this.index = this.sortMap(this.index);
-      return this.index;
+  walkAndGenerateIndex = async (pilePath) => {
+    const files = await walk(pilePath);
+    files.forEach((filePath) => {
+      const relativeFilePath = path.relative(pilePath, filePath);
+      const fileContent = fs.readFileSync(filePath, 'utf8');
+      const { data } = matter(fileContent);
+      this.index.set(relativeFilePath, data);
     });
+
+    this.index = await this.sortMap(this.index);
+    return this.index;
   };
 
   search(query) {
@@ -148,10 +124,16 @@ class PileIndex {
   }
 
   get() {
-    return this.index;
+    const result = Array.from(this.index.entries());
+    console.log(
+      'get() method called, returning array with length:',
+      result.length,
+    );
+    console.log('First entry:', result[0]);
+    return result;
   }
 
-  add(relativeFilePath) {
+  async add(relativeFilePath) {
     const filePath = path.join(this.pilePath, relativeFilePath);
     const fileContent = fs.readFileSync(filePath, 'utf8');
     const { data, content } = matter(fileContent);
@@ -159,29 +141,30 @@ class PileIndex {
     // add to search and vector index
     pileSearchIndex.initialize(this.pilePath, this.index);
     pileEmbeddings.addDocument(relativeFilePath, data);
-    this.save();
+    await this.save();
     return this.index;
   }
 
   getThreadAsText(filePath) {
     try {
-      let fullPath = path.join(this.pilePath, filePath);
-      let fileContent = fs.readFileSync(fullPath, 'utf8');
+      const fullPath = path.join(this.pilePath, filePath);
+      const fileContent = fs.readFileSync(fullPath, 'utf8');
       let { content, data: metedata } = matter(fileContent);
 
-      content =
-        `First entry at ${new Date(metedata.createdAt).toString()}:\n ` +
-        convertHTMLToPlainText(content);
+      content = `First entry at ${new Date(metedata.createdAt).toString()}:\n ${convertHTMLToPlainText(
+        content,
+      )}`;
 
       // concat the contents of replies
-      for (let replyPath of metedata.replies) {
+      // eslint-disable-next-line no-restricted-syntax
+      for (const replyPath of metedata.replies) {
         try {
-          let replyFullPath = path.join(this.pilePath, replyPath);
-          let replyFileContent = fs.readFileSync(replyFullPath, 'utf8');
-          let { content: replyContent, data: replyMetadata } =
+          const replyFullPath = path.join(this.pilePath, replyPath);
+          const replyFileContent = fs.readFileSync(replyFullPath, 'utf8');
+          const { content: replyContent, data: replyMetadata } =
             matter(replyFileContent);
           content += `\n\n Reply at ${new Date(
-            replyMetadata.createdAt
+            replyMetadata.createdAt,
           ).toString()}:\n  ${convertHTMLToPlainText(replyContent)}`;
         } catch (error) {
           continue;
@@ -195,7 +178,7 @@ class PileIndex {
 
   // reply's parent needs to be found by checking every non isReply entry and
   // see if it's included in the replies array of the parent
-  updateParentOfReply(replyPath) {
+  async updateParentOfReply(replyPath) {
     const reply = this.index.get(replyPath);
     if (reply.isReply) {
       for (let [filePath, metadata] of this.index) {
@@ -207,49 +190,81 @@ class PileIndex {
             });
             metadata.replies.push(filePath);
             this.index.set(filePath, metadata);
-            this.save();
+            await this.save();
           }
         }
       }
     }
   }
 
-  regenerateEmbeddings() {
+  async regenerateEmbeddings() {
     pileEmbeddings.regenerateEmbeddings(this.index);
-    this.save();
+    await this.save();
     return;
   }
 
-  update(relativeFilePath, data) {
+  async update(relativeFilePath, data) {
     this.index.set(relativeFilePath, data);
     pileSearchIndex.initialize(this.pilePath, this.index);
     pileEmbeddings.addDocument(relativeFilePath, data);
-    this.save();
+    await this.save();
     return this.index;
   }
 
-  remove(relativeFilePath) {
+  async remove(relativeFilePath) {
     this.index.delete(relativeFilePath);
-    this.save();
+    await this.save();
 
     return this.index;
   }
 
-  save() {
+  async save() {
     if (!this.pilePath) return;
     if (!fs.existsSync(this.pilePath)) {
       fs.mkdirSync(this.pilePath, { recursive: true });
     }
 
-    const sortedIndex = this.sortMap(this.index);
+    const sortedIndex = await this.sortMap(this.index);
     this.index = sortedIndex;
     const filePath = path.join(this.pilePath, this.fileName);
     const entries = this.index.entries();
 
     if (!entries) return;
 
-    let strMap = JSON.stringify(Array.from(entries));
+    const strMap = JSON.stringify(Array.from(entries));
     fs.writeFileSync(filePath, strMap);
+  }
+
+  async refreshSort() {
+    console.log(
+      'refreshSort called - before save, index size:',
+      this.index.size,
+    );
+    await this.save();
+    console.log(
+      'refreshSort called - after save, index size:',
+      this.index.size,
+    );
+
+    // Log first few entries to see the order
+    const entries = Array.from(this.index.entries()).slice(0, 3);
+    console.log(
+      'First 3 entries after refreshSort:',
+      entries.map(([key, meta]) => ({
+        key,
+        createdAt: meta.createdAt,
+        updatedAt: meta.updatedAt,
+      })),
+    );
+
+    // Actual IPC call
+    if (typeof sendIndexUpdatedEventToRenderer === 'function') {
+      sendIndexUpdatedEventToRenderer();
+    } else {
+      console.error(
+        'sendIndexUpdatedEventToRenderer function is not available. Check import in pileIndex.js.',
+      );
+    }
   }
 }
 
