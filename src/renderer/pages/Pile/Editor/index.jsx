@@ -1,26 +1,25 @@
 import './ProseMirror.scss';
 import styles from './Editor.module.scss';
+import 'katex/dist/katex.min.css';
 import { useCallback, useState, useEffect, useRef, memo } from 'react';
 import { Extension } from '@tiptap/core';
-import { useEditor, EditorContent } from '@tiptap/react';
-import Link from '@tiptap/extension-link';
-import StarterKit from '@tiptap/starter-kit';
-import Typography from '@tiptap/extension-typography';
-import Placeholder from '@tiptap/extension-placeholder';
 import CharacterCount from '@tiptap/extension-character-count';
-import { DiscIcon, PhotoIcon, TrashIcon, TagIcon } from 'renderer/icons';
-import { motion, AnimatePresence } from 'framer-motion';
-import { postFormat } from 'renderer/utils/fileOperations';
+import Link from '@tiptap/extension-link';
+import Placeholder from '@tiptap/extension-placeholder';
+import { MathExtension } from '@aarkue/tiptap-math-extension';
 import { useParams } from 'react-router-dom';
-import TagButton from './TagButton';
-import TagList from './TagList';
-import Attachments from './Attachments';
-import usePost from 'renderer/hooks/usePost';
-import ProseMirrorStyles from './ProseMirror.scss';
+import Typography from '@tiptap/extension-typography';
+import { EditorContent, useEditor } from '@tiptap/react';
+import StarterKit from '@tiptap/starter-kit';
 import { useAIContext } from 'renderer/context/AIContext';
-import useThread from 'renderer/hooks/useThread';
-import LinkPreviews from './LinkPreviews';
 import { useToastsContext } from 'renderer/context/ToastsContext';
+import usePost from 'renderer/hooks/usePost';
+import useThread from 'renderer/hooks/useThread';
+import { PhotoIcon } from 'renderer/icons';
+import PropTypes from 'prop-types';
+import Attachments from './Attachments';
+import LinkPreviews from './LinkPreviews';
+import './ProseMirror.scss';
 
 // Escape special characters
 const escapeRegExp = (string) => {
@@ -30,10 +29,7 @@ const escapeRegExp = (string) => {
 const highlightTerms = (text, term) => {
   if (!term.trim()) return text;
   const regex = new RegExp(`(${escapeRegExp(term)})`, 'gi');
-  return text.replace(
-    regex,
-    '<span class="' + styles.highlight + '">$1</span>'
-  );
+  return text.replace(regex, `<span class="${styles.highlight}">$1</span>`);
 };
 
 const Editor = memo(
@@ -51,8 +47,6 @@ const Editor = memo(
     const {
       post,
       savePost,
-      addTag,
-      removeTag,
       attachToPost,
       detachFromPost,
       setContent,
@@ -60,8 +54,7 @@ const Editor = memo(
       deletePost,
     } = usePost(postPath, { isReply, parentPostPath, reloadParentPost, isAI });
     const { getThread } = useThread();
-    const { ai, prompt, model, generateCompletion, prepareCompletionContext } =
-      useAIContext();
+    const { generateCompletion, prepareCompletionContext } = useAIContext();
     const { addNotification, removeNotification } = useToastsContext();
 
     const isNew = !postPath;
@@ -70,19 +63,17 @@ const Editor = memo(
       name: 'EnterSubmitExtension',
       addCommands() {
         return {
-          triggerSubmit:
-            () =>
-            ({ state, dispatch }) => {
-              const event = new CustomEvent('submit');
-              document.dispatchEvent(event);
-              return true;
-            },
+          triggerSubmit: () => () => {
+            const event = new CustomEvent('submit');
+            document.dispatchEvent(event);
+            return true;
+          },
         };
       },
 
       addKeyboardShortcuts() {
         return {
-          Enter: ({ editor }) => {
+          'Meta-Enter': ({ editor }) => {
             editor.commands.triggerSubmit();
             return true;
           },
@@ -122,10 +113,13 @@ const Editor = memo(
         CharacterCount.configure({
           limit: 10000,
         }),
+        MathExtension.configure({
+          evaluation: true,
+        }),
         EnterSubmitExtension,
       ],
       editorProps: {
-        handlePaste: function (view, event, slice) {
+        handlePaste(event) {
           const items = Array.from(event.clipboardData?.items || []);
           let imageHandled = false; // flag to track if an image was handled
 
@@ -140,8 +134,8 @@ const Editor = memo(
           }
           return imageHandled;
         },
-        handleDrop: function (view, event, slice, moved) {
-          let imageHandled = false; // flag to track if an image was handled
+        handleDrop(event, moved) {
+          const imageHandled = false; // flag to track if an image was handled
           if (
             !moved &&
             event.dataTransfer &&
@@ -157,11 +151,25 @@ const Editor = memo(
         },
       },
       autofocus: true,
-      editable: editable,
+      editable,
       content: post?.content || '',
-      onUpdate: ({ editor }) => {
-        setContent(editor.getHTML());
+      onUpdate: ({ editor: tipTapEditor }) => {
+        setContent(tipTapEditor.getHTML());
       },
+    });
+
+    // Read-only editor for non-editable view to ensure LaTeX is rendered
+    const readOnlyEditor = useEditor({
+      extensions: [
+        StarterKit,
+        Typography,
+        Link,
+        MathExtension.configure({
+          evaluation: true,
+        }),
+      ],
+      editable: false,
+      content: post?.content || '',
     });
 
     const elRef = useRef();
@@ -190,6 +198,7 @@ const Editor = memo(
     useEffect(() => {
       if (!editor) return;
       generateAiResponse();
+      // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [editor, isAI]);
 
     const handleSubmit = useCallback(async () => {
@@ -202,7 +211,7 @@ const Editor = memo(
 
       closeReply();
       setEditable(false);
-    }, [editor, isNew, post]);
+    }, [isNew, resetPost, closeReply, setEditable, savePost]);
 
     // Listen for the 'submit' event and call handleSubmit when it's triggered
     useEffect(() => {
@@ -223,10 +232,10 @@ const Editor = memo(
     // on entries added for the AI that are empty.
     const generateAiResponse = useCallback(async () => {
       if (
-        !editor ||
-        isAIResponding ||
-        !isAI ||
-        !editor.state.doc.textContent.length === 0
+        !editor || // no editor
+        isAIResponding || // already responding
+        !isAI || // not AI post
+        editor.state.doc.textContent.length > 0 // not empty
       )
         return;
 
@@ -246,7 +255,9 @@ const Editor = memo(
         if (context.length === 0) return;
 
         await generateCompletion(context, (token) => {
-          editor.commands.insertContent(token);
+          if (token) {
+            editor.commands.insertContent(token);
+          }
         });
       } catch (error) {
         addNotification({
@@ -267,16 +278,27 @@ const Editor = memo(
       prepareCompletionContext,
       getThread,
       parentPostPath,
+      addNotification,
+      closeReply,
+      isAIResponding,
+      removeNotification,
+      setEditable,
     ]);
 
     useEffect(() => {
       if (editor) {
         if (!post) return;
-        if (post?.content != editor.getHTML()) {
+        if (post?.content !== editor.getHTML()) {
           editor.commands.setContent(post.content);
         }
       }
-    }, [post, editor]);
+      if (readOnlyEditor) {
+        if (!post) return;
+        if (post?.content != readOnlyEditor.getHTML()) {
+          readOnlyEditor.commands.setContent(post.content);
+        }
+      }
+    }, [post, editor, readOnlyEditor]);
 
     const triggerAttachment = () => attachToPost();
 
@@ -285,16 +307,16 @@ const Editor = memo(
         editor.setEditable(editable);
       }
       setDeleteStep(0);
-    }, [editable]);
+    }, [editable, editor]);
 
     const handleOnDelete = useCallback(async () => {
-      if (deleteStep == 0) {
+      if (deleteStep === 0) {
         setDeleteStep(1);
         return;
       }
 
       await deletePost();
-    }, [deleteStep]);
+    }, [deleteStep, setDeleteStep, deletePost]);
 
     const isBig = useCallback(() => {
       return editor?.storage.characterCount.characters() < 280;
@@ -308,7 +330,7 @@ const Editor = memo(
       return 'Update';
     };
 
-    if (!post) return;
+    if (!post) return null;
 
     let previewContent = post.content;
     if (searchTerm && !editable) {
@@ -319,7 +341,7 @@ const Editor = memo(
       <div className={`${styles.frame} ${isNew && styles.isNew}`}>
         {editable ? (
           <EditorContent
-            key={'new'}
+            key="new"
             className={`${styles.editor} ${isBig() && styles.editorBig} ${
               isAIResponding && styles.responding
             }`}
@@ -327,10 +349,10 @@ const Editor = memo(
           />
         ) : (
           <div className={styles.uneditable}>
-            <div
+            <EditorContent
               key="uneditable"
               className={`${styles.editor} ${isBig() && styles.editorBig}`}
-              dangerouslySetInnerHTML={{ __html: previewContent }}
+              editor={readOnlyEditor}
             />
           </div>
         )}
@@ -349,6 +371,7 @@ const Editor = memo(
             onMouseMove={handleMouseMove}
             onMouseUp={handleMouseUp}
             onMouseLeave={handleMouseUp}
+            role="presentation"
           >
             <div className={styles.container}>
               <Attachments
@@ -363,26 +386,36 @@ const Editor = memo(
         {editable && (
           <div className={styles.footer}>
             <div className={styles.left}>
-              <button className={styles.button} onClick={triggerAttachment}>
+              <button
+                type="button"
+                className={styles.button}
+                onClick={triggerAttachment}
+              >
                 <PhotoIcon className={styles.icon} />
               </button>
             </div>
             <div className={styles.right}>
               {isReply && (
-                <button className={styles.deleteButton} onClick={closeReply}>
+                <button
+                  type="button"
+                  className={styles.deleteButton}
+                  onClick={closeReply}
+                >
                   Close
                 </button>
               )}
 
               {!isNew && (
                 <button
+                  type="button"
                   className={styles.deleteButton}
                   onClick={handleOnDelete}
                 >
-                  {deleteStep == 0 ? 'Delete' : 'Click again to confirm'}
+                  {deleteStep === 0 ? 'Delete' : 'Click again to confirm'}
                 </button>
               )}
               <button
+                type="button"
                 tabIndex="0"
                 className={styles.button}
                 onClick={handleSubmit}
@@ -394,7 +427,19 @@ const Editor = memo(
         )}
       </div>
     );
-  }
+  },
 );
+
+Editor.propTypes = {
+  postPath: PropTypes.string.isRequired,
+  editable: PropTypes.bool.isRequired,
+  parentPostPath: PropTypes.string.isRequired,
+  isAI: PropTypes.bool.isRequired,
+  isReply: PropTypes.bool.isRequired,
+  closeReply: PropTypes.func.isRequired,
+  setEditable: PropTypes.func.isRequired,
+  reloadParentPost: PropTypes.func.isRequired,
+  searchTerm: PropTypes.string.isRequired,
+};
 
 export default Editor;

@@ -1,14 +1,9 @@
-import styles from './LinkPreview.module.scss';
-import { useCallback, useState, useEffect } from 'react';
-import {
-  DiscIcon,
-  PhotoIcon,
-  TrashIcon,
-  TagIcon,
-  ChainIcon,
-} from 'renderer/icons';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
+import { useEffect, useState } from 'react';
 import { useLinksContext } from 'renderer/context/LinksContext';
+import { ChainIcon } from 'renderer/icons';
+import PropTypes from 'prop-types';
+import styles from './LinkPreview.module.scss';
 
 const isUrlYouTubeVideo = (url) => {
   // Regular expression to check for various forms of YouTube URLs
@@ -24,26 +19,21 @@ export default function LinkPreview({ url }) {
 
   const toggleExpand = () => setExpanded(!expanded);
 
-  const getPreview = async (url) => {
-    const data = await getLink(url);
-    setPreview(data);
-  };
-
-  const updateSummary = (e) => {
-    const summary = e.target.value;
-    const _preview = { ...preview, aiCard: { ...preview.aiCard, summary } };
-  };
-
   useEffect(() => {
+    const getPreview = async (theUrl) => {
+      const data = await getLink(theUrl);
+      setPreview(data);
+    };
+
     getPreview(url);
-  }, [url]);
+  }, [url, getLink]);
 
-  if (!preview) return <div className={styles.placeholder}></div>;
+  if (!preview) return <div className={styles.placeholder} />;
 
-  const createYouTubeEmbed = (url) => {
+  const createYouTubeEmbed = (videoUrl) => {
     // Extract the video ID from the YouTube URL
-    const regExp = /^.*(youtu.be\/|v\/|e\/|u\/\w+\/|embed\/|v=)([^#\&\?]*).*/;
-    const match = url.match(regExp);
+    const regExp = /^.*(youtu.be\/|v\/|e\/|u\/\w+\/|embed\/|v=)([^#?&]*).*/;
+    const match = videoUrl.match(regExp);
 
     if (match && match[2].length === 11) {
       return (
@@ -59,19 +49,19 @@ export default function LinkPreview({ url }) {
           />
         </div>
       );
-    } else {
-      return null;
     }
+    return null;
   };
 
   const renderImage = () => {
-    if (!preview?.images || preview.images.length == 0) return;
+    if (!preview?.images || preview.images.length === 0) return null;
 
     const image = preview.images[0];
+    if (!image || image.trim() === '') return null;
 
     return (
       <div className={styles.image}>
-        <img src={image} />
+        <img src={image} alt="Preview" />
       </div>
     );
   };
@@ -82,9 +72,9 @@ export default function LinkPreview({ url }) {
 
   const renderAICard = () => {
     // check if AI card is reliable and has enough content.
-    if (!preview.aiCard) return;
+    if (!preview.aiCard) return null;
 
-    const highlights = () => {};
+    // const highlights = null;  // Removed unused variable
 
     return (
       <div className={styles.aiCard}>
@@ -93,22 +83,22 @@ export default function LinkPreview({ url }) {
         {/* Highlights */}
         {preview?.aiCard?.highlights?.length > 0 && (
           <ul className={`${styles.highlights} ${expanded && styles.show}`}>
-            {preview.aiCard.highlights.map((highlight, i) => (
-              <li key={`preview-${i}`}>{highlight}</li>
+            {preview.aiCard.highlights.map((highlight) => (
+              <li key={highlight}>{highlight}</li>
             ))}
             <div
-              key={'overlay'}
+              key="overlay"
               className={`${styles.overlay} ${expanded && styles.hidden}`}
-            ></div>
+            />
           </ul>
         )}
 
         {/* Buttons */}
         {preview?.aiCard?.buttons?.length > 0 && (
           <div className={styles.buttons}>
-            {preview.aiCard.buttons.map((btn, i) => (
+            {preview.aiCard.buttons.map((btn) => (
               <a
-                key={`button-${i}`}
+                key={btn.title}
                 href={btn.href}
                 target="_blank"
                 rel="noopener noreferrer"
@@ -132,7 +122,17 @@ export default function LinkPreview({ url }) {
       exit={{ opacity: 0 }}
       transition={{ delay: 0.3 }}
     >
-      <div className={styles.card} onClick={toggleExpand}>
+      <div
+        className={styles.card}
+        onClick={toggleExpand}
+        role="button"
+        tabIndex={0}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            toggleExpand();
+          }
+        }}
+      >
         {renderImage()}
         <div className={styles.content}>
           <a
@@ -146,7 +146,13 @@ export default function LinkPreview({ url }) {
         </div>
         {renderAICard()}
         <div className={styles.footer}>
-          <img className={styles.favicon} src={preview.favicon} />{' '}
+          {preview.favicon && preview.favicon.trim() !== '' && (
+            <img
+              className={styles.favicon}
+              src={preview.favicon}
+              alt="Favicon"
+            />
+          )}{' '}
           {preview?.aiCard?.category && (
             <span className={styles.category}>{preview?.aiCard?.category}</span>
           )}
@@ -156,3 +162,7 @@ export default function LinkPreview({ url }) {
     </motion.div>
   );
 }
+
+LinkPreview.propTypes = {
+  url: PropTypes.string.isRequired,
+};

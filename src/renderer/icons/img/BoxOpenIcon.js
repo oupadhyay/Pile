@@ -1,18 +1,20 @@
-export const BoxOpenIcon = (props) => {
+/* eslint-disable import/prefer-default-export */
+export function BoxOpenIcon(props) {
   return (
     <svg
       height="21"
       viewBox="0 0 21 21"
       width="21"
       xmlns="http://www.w3.org/2000/svg"
+      // eslint-disable-next-line react/jsx-props-no-spreading
       {...props}
     >
       <g
         fill="none"
-        fill-rule="evenodd"
+        fillRule="evenodd"
         stroke="currentColor"
-        stroke-linecap="round"
-        stroke-linejoin="round"
+        strokeLinecap="round"
+        strokeLinejoin="round"
         transform="translate(0 1)"
       >
         <path d="m3.5 6.5 7-4 5.9922779 3.42415879c.62315.35608571 1.0077221 1.01877259 1.0077221 1.73648628v4.67870983c0 .7177137-.3845721 1.3804006-1.0077221 1.7364863l-5 2.8571429c-.6148654.3513516-1.3696904.3513516-1.98455578 0l-5-2.8571429c-.62314999-.3560857-1.00772212-1.0187726-1.00772212-1.7364863 0-1.2454967 0-2.1796192 0-2.8023676" />
@@ -23,4 +25,4 @@ export const BoxOpenIcon = (props) => {
       </g>
     </svg>
   );
-};
+}

@@ -69,6 +69,11 @@
   display: flex;
   gap: 14px;
 
+  & > * {
+    width: 100%;
+    min-width: 100px;
+  }
+
   .Fieldset {
     &:first-child {
       flex: 2 1 70%;
@@ -206,6 +211,18 @@
   }
 }
 
+select.input {
+  cursor: pointer;
+  justify-content: flex-start;
+  width: 100%;
+  min-width: 80px;
+
+  option {
+    background: var(--bg-tertiary);
+    color: var(--primary);
+  }
+}
+
 .icon {
   height: 16px;
   width: 16px;
@@ -264,7 +281,7 @@
   font-size: 0.85em;
   border-bottom: 2px solid var(--bg-tertiary);
   gap: 10px;
-  justify-content: space-between;
+  justify-content: space-around;
   // background: var(--bg-tertiary);
 
   .icon {
@@ -331,7 +348,7 @@
 
 .tabsContent {
   flex-grow: 1;
-  padding: 12px;
+  padding: 20px;
   border-bottom-left-radius: 17px;
   border-bottom-right-radius: 17px;
   outline: none;
@@ -369,7 +386,7 @@
   font-size: 0.9em;
   line-height: 1.5;
   color: var(--primary);
-  width: 80%;
+  width: 100%;
   margin-bottom: 12px;
 }
 
